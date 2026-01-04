@@ -8,7 +8,7 @@ video:
     source_blend: bracelets
     target_blend: necklace
     # NEW: target product image for image conditioning
-    target_image: /Users/verypro/research/pvtt/data/samples/family-charm-necklace-custom-birthstone.webp
+    target_image: ../../../data/samples/family-charm-necklace-custom-birthstone.webp
 
 # Model config (optional, defaults to I2V model when target_image is specified)
 # model_id: Wan-AI/Wan2.1-I2V-14B-480P-Diffusers
