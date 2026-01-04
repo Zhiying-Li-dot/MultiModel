@@ -417,6 +417,85 @@
 
 ---
 
+## Baseline 方案
+
+### 选择 Training-Free Video Editing 作为 Baseline
+
+**理由**：
+1. PVTT 本质是"保持模板结构/运镜，替换产品"—— 与 video editing 目标一致
+2. 可以快速验证任务可行性，展示现有方法的不足
+3. 论文需要 baseline 对比
+4. 不需要训练，快速出结果
+
+### FlowEdit：ICCV 2025 Best Student Paper
+
+| 项目 | 信息 |
+|------|------|
+| **论文** | FlowEdit: Inversion-Free Text-Based Editing Using Pre-Trained Flow Models |
+| **会议** | ICCV 2025 **Best Student Paper** |
+| **作者** | Vladimir Kulikov, Matan Kleiner, Inbar Huberman-Spiegelglas, Tomer Michaeli |
+| **特点** | Inversion-free, optimization-free, model agnostic |
+| **官方 GitHub** | https://github.com/fallenshock/FlowEdit |
+| **Project Page** | https://matankleiner.github.io/flowedit/ |
+
+**核心创新**：
+- 构造 ODE 直接映射源分布到目标分布
+- 不需要 inversion，比传统方法 transport cost 更低
+- 支持 SD3, FLUX, Hunyuan, LTX-Video
+
+### WAN2.1 + FlowEdit 实现
+
+| 项目 | 链接 | 说明 |
+|------|------|------|
+| **Awesome-Training-Free-WAN2.1-Editing** | https://github.com/KyujinHan/Awesome-Training-Free-WAN2.1-Editing | 推荐使用 |
+| **ComfyUI-MagicWan** | https://github.com/zackabrams/ComfyUI-MagicWan | ComfyUI 实现 |
+
+**WANAlign2.1 特点**：
+- Inversion-free video editing framework
+- 基于 FlowEdit/FlowAlign
+- 引入 DIFS (Decoupled Inversion-Free Sampling) 控制编辑区域
+- 在官方 WAN2.1 仓库中被推荐
+- WAN2.1 使用 DiT 架构，可直接采用 FlowEdit 无需额外修改
+
+### 作为 Baseline 的优势
+
+1. ✅ **SOTA**：ICCV 2025 Best Student Paper
+2. ✅ **基于 WAN**：与研究方向一致
+3. ✅ **Training-Free**：快速验证
+4. ✅ **开源可用**：有现成代码
+5. ✅ **技术先进**：Inversion-free 是当前趋势
+
+### Baseline 实验设计
+
+```
+实验目标：验证现有 Training-Free 方法在 PVTT 任务上的效果
+
+输入：
+- 模板视频：手链视频镜头1（纯产品展示，6.2s）
+- 目标产品：项链图片
+- 编辑指令："Replace the bracelets with the necklace"
+
+方法：WANAlign2.1 (FlowEdit + WAN2.1)
+
+评估指标：
+- 产品替换是否成功
+- 背景/运镜是否保持
+- 时序一致性
+- 产品细节保真度
+```
+
+### 预期结果与分析
+
+基于之前的观察，预期 Training-Free 方法会有以下问题：
+1. **主体时序一致性差**：产品在帧间闪烁或形变
+2. **不完全跟随指令编辑**：可能只改变部分区域或风格
+3. **产品细节丢失**：无法保持产品的精确外观
+4. **形态迁移困难**：不同形态产品（手链→项链）的替换效果差
+
+这些问题将成为 PVTT 方法需要解决的核心挑战，也是论文的 motivation。
+
+---
+
 ## 备注
 
 - 该计划基于 2026年1月4日的讨论制定
