@@ -21,9 +21,10 @@ import regex as re
 import torch
 import torch.nn.functional as F
 from PIL import Image
-from transformers import AutoTokenizer, UMT5EncoderModel
+from transformers import AutoTokenizer, UMT5EncoderModel, CLIPVisionModel, CLIPImageProcessor
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
+from ...image_processor import PipelineImageInput
 from ...loaders import WanLoraLoaderMixin
 from ...models import AutoencoderKLWan, WanTransformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
@@ -206,6 +207,8 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         transformer: WanTransformer3DModel,
         vae: AutoencoderKLWan,
         scheduler: FlowMatchEulerDiscreteScheduler,
+        image_encoder: Optional[CLIPVisionModel] = None,
+        image_processor: Optional[CLIPImageProcessor] = None,
     ):
         super().__init__()
 
@@ -215,6 +218,8 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             tokenizer=tokenizer,
             transformer=transformer,
             scheduler=scheduler,
+            image_encoder=image_encoder,
+            image_processor=image_processor,
         )
 
         self.vae_scale_factor_temporal = 2 ** sum(self.vae.temperal_downsample) if getattr(self, "vae", None) else 4
@@ -264,6 +269,32 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         prompt_embeds = prompt_embeds.view(batch_size * num_videos_per_prompt, seq_len, -1)
 
         return prompt_embeds
+
+    def encode_image(
+        self,
+        image: PipelineImageInput,
+        device: Optional[torch.device] = None,
+    ) -> torch.Tensor:
+        """
+        Encode product image using CLIP vision encoder.
+
+        Args:
+            image: PIL Image or path to image
+            device: target device
+
+        Returns:
+            image_embeds: Tensor of shape (batch, seq_len, hidden_dim)
+        """
+        if self.image_encoder is None or self.image_processor is None:
+            raise ValueError(
+                "image_encoder and image_processor must be provided to use image conditioning. "
+                "Please load the pipeline with image_encoder and image_processor from an I2V model."
+            )
+
+        device = device or self._execution_device
+        image = self.image_processor(images=image, return_tensors="pt").to(device)
+        image_embeds = self.image_encoder(**image, output_hidden_states=True)
+        return image_embeds.hidden_states[-2]
 
     def encode_prompt(
         self,
@@ -1208,6 +1239,7 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         source_negative_prompt: Union[str, List[str]] = None,
         target_prompt: Union[str, List[str]] = None,
         target_negative_prompt: Union[str, List[str]] = None,
+        target_image: PipelineImageInput = None,  # NEW: target product image
         height: int = 480,
         width: int = 832,
         num_inference_steps: int = 50,
@@ -1364,6 +1396,13 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         if target_negative_prompt_embeds is not None:
             target_negative_prompt_embeds = target_negative_prompt_embeds.to(transformer_dtype)
 
+        # 3.1 Encode target image (NEW: for image conditioning)
+        target_image_embeds = None
+        if target_image is not None and self.image_encoder is not None:
+            target_image_embeds = self.encode_image(target_image, device=device)
+            target_image_embeds = target_image_embeds.to(transformer_dtype)
+            print(f"[FlowalignImage] Encoded target image: {target_image_embeds.shape}")
+
         # FlowAlign은 CFG 이용 안 함
         #if self.do_classifier_free_guidance:
         if False:
@@ -1478,7 +1517,18 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 )
                 #print(concat_prompt_embeds.shape) # torch.Size([3, 512, 4096])
                 #print(concat_prompt_embeds.dtype) # torch.float16
-                
+
+                # Build image embeddings for batch (NEW: for image conditioning)
+                # Source samples (index 0, 1) use zeros, Target sample (index 2) uses target_image
+                concat_image_embeds = None
+                if target_image_embeds is not None:
+                    zero_image_embeds = torch.zeros_like(target_image_embeds)
+                    concat_image_embeds = torch.cat([
+                        zero_image_embeds,      # Source for vq (no image)
+                        zero_image_embeds,      # Source for vp (no image)
+                        target_image_embeds,    # Target for vp (with target image)
+                    ], dim=0)
+
                 timestep = t.expand(concat_latent_model_input.shape[0])
 
                 # inference
@@ -1487,6 +1537,7 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     hidden_states=concat_latent_model_input,
                     timestep=timestep,
                     encoder_hidden_states=concat_prompt_embeds,
+                    encoder_hidden_states_image=concat_image_embeds,  # NEW: image conditioning
                     attention_kwargs=attention_kwargs,
                     return_dict=False,
                 )[0]

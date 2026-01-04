@@ -12,6 +12,7 @@ import omegaconf
 from diffusers.utils import export_to_video
 from diffusers import AutoencoderKLWan, WanPipeline # pipeline_wan.py
 from diffusers.schedulers.scheduling_unipc_multistep import UniPCMultistepScheduler
+from transformers import CLIPVisionModel, CLIPImageProcessor
 
 from utils.wan_attention import register_attention_processor
 
@@ -46,13 +47,44 @@ if __name__ == '__main__':
     config = get_args()
 
     # Available models: Wan-AI/Wan2.1-T2V-14B-Diffusers, Wan-AI/Wan2.1-T2V-1.3B-Diffusers
+    # For image conditioning, use I2V models: Wan-AI/Wan2.1-I2V-14B-480P-Diffusers
     ## Wan-AI/Wan2.1-T2V-1.3B-Diffusers
     ## Wan-AI/Wan2.1-T2V-1.3B-Diffusers
-    model_id = "Wan-AI/Wan2.1-T2V-1.3B-Diffusers"
-    vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
-    flow_shift = 3.0 # 5.0 for 720P, 3.0 for 480P (1.3B only)
-    scheduler = UniPCMultistepScheduler(prediction_type='flow_prediction', use_flow_sigmas=True, num_train_timesteps=1000, flow_shift=flow_shift)
-    pipe = WanPipeline.from_pretrained(model_id, vae=vae, torch_dtype=torch.float16) # dtype checking
+
+    # Check if target_image is specified - if so, use I2V model for image conditioning
+    use_image_conditioning = config['video'].get('target_image', None) is not None
+
+    if use_image_conditioning:
+        # Use I2V model for image conditioning
+        model_id = config.get('model_id', "Wan-AI/Wan2.1-I2V-14B-480P-Diffusers")
+        print(f"[Image Conditioning] Loading I2V model: {model_id}")
+
+        # Load image encoder and processor
+        image_encoder = CLIPVisionModel.from_pretrained(
+            model_id, subfolder="image_encoder", torch_dtype=torch.float32
+        )
+        image_processor = CLIPImageProcessor.from_pretrained(
+            model_id, subfolder="image_processor"
+        )
+
+        vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
+        flow_shift = 3.0  # 3.0 for 480P
+        scheduler = UniPCMultistepScheduler(prediction_type='flow_prediction', use_flow_sigmas=True, num_train_timesteps=1000, flow_shift=flow_shift)
+        pipe = WanPipeline.from_pretrained(
+            model_id,
+            vae=vae,
+            image_encoder=image_encoder,
+            image_processor=image_processor,
+            torch_dtype=torch.float16
+        )
+    else:
+        # Use T2V model (original behavior)
+        model_id = "Wan-AI/Wan2.1-T2V-1.3B-Diffusers"
+        vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
+        flow_shift = 3.0 # 5.0 for 720P, 3.0 for 480P (1.3B only)
+        scheduler = UniPCMultistepScheduler(prediction_type='flow_prediction', use_flow_sigmas=True, num_train_timesteps=1000, flow_shift=flow_shift)
+        pipe = WanPipeline.from_pretrained(model_id, vae=vae, torch_dtype=torch.float16) # dtype checking
+
     pipe.scheduler = scheduler
     pipe.to("cuda")
 
@@ -184,10 +216,18 @@ if __name__ == '__main__':
                                     target_idx=target_idx,
                                     )
                                     
+        # Load target image if specified (NEW: for image conditioning)
+        target_image = None
+        if config['video'].get('target_image', None):
+            target_image_path = config['video']['target_image']
+            target_image = Image.open(target_image_path).convert("RGB")
+            print(f"[Image Conditioning] Loaded target image: {target_image_path}")
+
         output = pipe.flowalign(
             video = video,
             source_prompt=source_prompt,
             target_prompt=target_prompt,
+            target_image=target_image,  # NEW: pass target image for conditioning
             height=480,
             width=832,
             num_inference_steps=num_inference_steps,
