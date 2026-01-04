@@ -292,9 +292,12 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             )
 
         device = device or self._execution_device
-        image = self.image_processor(images=image, return_tensors="pt").to(device)
+        # Get image_encoder device (may be CPU when using model offload)
+        encoder_device = next(self.image_encoder.parameters()).device
+        image = self.image_processor(images=image, return_tensors="pt").to(encoder_device)
         image_embeds = self.image_encoder(**image, output_hidden_states=True)
-        return image_embeds.hidden_states[-2]
+        # Move output to target device
+        return image_embeds.hidden_states[-2].to(device)
 
     def encode_prompt(
         self,
