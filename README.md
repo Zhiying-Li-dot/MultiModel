@@ -17,16 +17,15 @@
 ```
 pvtt/
 ├── data/                 # 数据集
-│   ├── templates/        # 模板视频
-│   ├── products/         # 产品图片
-│   └── pairs/            # 配对数据
+│   └── samples/          # 样例数据
 ├── src/                  # 源代码
-│   ├── models/           # 模型定义
-│   ├── data/             # 数据处理
-│   └── utils/            # 工具函数
 ├── experiments/          # 实验记录
-├── docs/                 # 文档
-└── 2026-research-plan.md # 研究计划
+│   ├── README.md         # 实验结果汇总
+│   └── baseline/         # Baseline 实验
+└── docs/                 # 文档
+    ├── research-plan.md  # 研究计划
+    ├── literature-review.md  # 文献综述
+    └── baseline-design.md    # Baseline 设计
 ```
 
 ## 研究进度
@@ -35,22 +34,25 @@ pvtt/
   - [x] DreamSwapV (2025)
   - [x] VideoSwap (CVPR 2024)
   - [x] MotionBooth (NeurIPS 2024)
-- [ ] 收集模板视频样例
-- [ ] 初步实验（IP-Adapter + Wan）
-- [ ] 设计技术方案
-- [ ] 实现 Baseline
+- [x] 收集模板视频样例
+- [x] Baseline 实验 (WANAlign2.1)
+  - ✅ 产品替换成功
+  - ⚠️ 时序一致性问题
+  - ⚠️ 细节清晰度不足
+- [ ] 设计 PVTT 技术方案
 - [ ] 数据集构建
 - [ ] 完整实验
 - [ ] 论文写作
 
+## 快速链接
+
+| 文档 | 说明 |
+|------|------|
+| [研究计划](docs/research-plan.md) | 目标、时间表、阶段任务 |
+| [文献综述](docs/literature-review.md) | 论文精读、技术对比 |
+| [Baseline 设计](docs/baseline-design.md) | FlowEdit + WAN2.1 |
+| [实验结果](experiments/README.md) | 实验配置与结果 |
+
 ## 目标会议
 
 CVPR 2027 (Deadline: 2026年11月中旬)
-
-## 相关论文
-
-| 论文 | 会议 | 链接 |
-|------|------|------|
-| DreamSwapV | Under Review | [arXiv](https://arxiv.org/abs/2508.14465) |
-| VideoSwap | CVPR 2024 | [GitHub](https://github.com/showlab/VideoSwap) |
-| MotionBooth | NeurIPS 2024 | [GitHub](https://github.com/jianzongwu/MotionBooth) |
