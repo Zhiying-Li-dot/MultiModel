@@ -86,7 +86,13 @@ if __name__ == '__main__':
         pipe = WanPipeline.from_pretrained(model_id, vae=vae, torch_dtype=torch.float16) # dtype checking
 
     pipe.scheduler = scheduler
-    pipe.to("cuda")
+
+    # Use CPU offload for large models (14B requires >32GB VRAM)
+    if use_image_conditioning:
+        pipe.enable_model_cpu_offload()
+        print("[Image Conditioning] Using CPU offload for 14B model")
+    else:
+        pipe.to("cuda")
 
     # load video
     video, fps = load_video(config['video']['video_path']) # horsejump-high
