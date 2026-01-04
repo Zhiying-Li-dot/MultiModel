@@ -2,7 +2,7 @@
 # Uses I2V model with product image for better product fidelity
 
 video:
-    video_path: ./videos/bracelet_shot1.mp4
+    video_path: ./videos/bracelet_shot1_480p.mp4
     source_prompt: Two personalized couple bracelets, one silver and one black, placed on a purple silk fabric with decorative stones.
     target_prompt: A gold chain necklace with multiple gemstone pendants including moonstone, green jade and emerald, with gold leaf charms, placed on a purple silk fabric with decorative stones.
     source_blend: bracelets

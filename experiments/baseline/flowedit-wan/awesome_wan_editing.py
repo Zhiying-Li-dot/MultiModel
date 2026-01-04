@@ -89,8 +89,8 @@ if __name__ == '__main__':
 
     # Use CPU offload for large models (14B requires >32GB VRAM)
     if use_image_conditioning:
-        pipe.enable_model_cpu_offload()
-        print("[Image Conditioning] Using CPU offload for 14B model")
+        pipe.enable_sequential_cpu_offload()
+        print("[Image Conditioning] Using sequential CPU offload for 14B model")
     else:
         pipe.to("cuda")
 
