@@ -310,9 +310,54 @@ flowalign:
 
 ---
 
+## 实验结果 (2026-01-05)
+
+### 发现：I2V 模型架构不兼容
+
+运行实验时发现 **I2V 14B 模型无法直接用于 FlowAlign**：
+
+```
+RuntimeError: expected input to have 36 channels, but got 16 channels
+```
+
+**原因分析**：
+
+| 模型 | 输入通道数 | 输入格式 |
+|------|-----------|---------|
+| WAN T2V | 16ch | video latent |
+| WAN I2V | 36ch | video latent (16) + image latent (20) |
+
+I2V 模型的 `patch_embedding` 层期望 36 通道输入，因为它设计为：
+- 16ch: 视频 latent（噪声）
+- 20ch: 第一帧图片的 latent（作为条件）
+
+而 FlowAlign 只提供 16ch 的视频 latent。
+
+### 可选方案
+
+| 方案 | 可行性 | 说明 |
+|------|--------|------|
+| **A. 使用 IP-Adapter** | ⭐⭐⭐ | 在 T2V 模型上添加 image adapter |
+| **B. 修改 I2V 输入** | ⭐⭐ | 填充 20ch 为产品图片 latent |
+| **C. 使用 WAN 2.2 TI2V** | ⭐⭐ | Text+Image to Video 模型 |
+| **D. Reference-only** | ⭐⭐⭐ | 类似 ControlNet reference-only |
+
+### 推荐方案：IP-Adapter
+
+IP-Adapter 是最成熟的方案：
+1. 不需要修改模型架构
+2. 可以与 T2V 1.3B 配合使用（内存友好）
+3. 已有开源实现可参考
+
+**参考**：[IP-Adapter](https://github.com/tencent-ailab/IP-Adapter)
+
+---
+
 ## 下一步
 
-1. [ ] 下载 I2V 模型到 5090 机器
-2. [ ] 实现代码修改
-3. [ ] 准备测试图片（项链产品图）
-4. [ ] 运行实验对比
+1. [x] ~~下载 I2V 模型到 5090 机器~~
+2. [x] ~~实现代码修改~~
+3. [x] ~~准备测试图片（项链产品图）~~
+4. [x] ~~运行实验~~ → 发现架构不兼容
+5. [ ] 研究 IP-Adapter 方案
+6. [ ] 或探索修改 I2V 输入格式
