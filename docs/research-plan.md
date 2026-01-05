@@ -1,13 +1,5 @@
 # 2026 研究计划：Product Video Template Transfer (PVTT)
 
-## 背景
-
-- 2019年开始港科大博士
-- 主要时间在创业，没有固定导师指导
-- 过去涉猎：人体姿态估计、lip sync、video editing
-- 2024年 lip sync 工作投稿 CVPR 被拒（原因：方法不够 novel，用 GAN 偏保守）
-- 目前在做 video editing 方向，带学生做 Training-Free 和 DMD 两个子工作
-
 ## 2026 目标
 
 **发表一篇 CVPR 级别的一作论文**
