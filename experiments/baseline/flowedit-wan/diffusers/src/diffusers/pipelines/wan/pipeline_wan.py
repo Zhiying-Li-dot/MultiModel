@@ -229,6 +229,59 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         # kyujinpy
         self.gaussian_blur = GaussianBlur(kernel_size=7, sigma=0.5) # kernel size is odd
 
+    def prepare_first_frame_condition(
+        self,
+        image: torch.Tensor,
+        num_frames: int,
+        latent_height: int,
+        latent_width: int,
+        device: torch.device,
+        dtype: torch.dtype,
+    ) -> tuple:
+        """
+        Prepare first-frame condition for TI2V (expand_timesteps) mode.
+
+        Args:
+            image: First frame image tensor [B, C, H, W] normalized to [-1, 1]
+            num_frames: Number of video frames
+            latent_height: Height of latent space
+            latent_width: Width of latent space
+            device: Target device
+            dtype: Target dtype
+
+        Returns:
+            condition: VAE-encoded first frame [B, z_dim, F, H, W]
+            first_frame_mask: Mask tensor [B, 1, F, H, W] where 0=condition, 1=latent
+        """
+        num_latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
+
+        # Expand image to video format [B, C, 1, H, W]
+        video_condition = image.unsqueeze(2)
+        video_condition = video_condition.to(device=device, dtype=self.vae.dtype)
+
+        # Encode with VAE
+        latent_condition = self.vae.encode(video_condition).latent_dist.sample()
+
+        # Normalize with VAE latent statistics
+        latents_mean = (
+            torch.tensor(self.vae.config.latents_mean)
+            .view(1, self.vae.config.z_dim, 1, 1, 1)
+            .to(device, dtype)
+        )
+        latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).to(
+            device, dtype
+        )
+        latent_condition = latent_condition.to(dtype)
+        latent_condition = (latent_condition - latents_mean) * latents_std
+
+        # Create first-frame mask (0 = use condition, 1 = use latent)
+        first_frame_mask = torch.ones(
+            1, 1, num_latent_frames, latent_height, latent_width, dtype=dtype, device=device
+        )
+        first_frame_mask[:, :, 0] = 0  # First frame uses condition
+
+        return latent_condition, first_frame_mask
+
     def _get_t5_prompt_embeds(
         self,
         prompt: Union[str, List[str]] = None,
@@ -1399,12 +1452,12 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         if target_negative_prompt_embeds is not None:
             target_negative_prompt_embeds = target_negative_prompt_embeds.to(transformer_dtype)
 
-        # 3.1 Encode target image (NEW: for image conditioning)
+        # 3.1 Encode target image (NEW: for image conditioning with CLIP - I2V models)
         target_image_embeds = None
         if target_image is not None and self.image_encoder is not None:
             target_image_embeds = self.encode_image(target_image, device=device)
             target_image_embeds = target_image_embeds.to(transformer_dtype)
-            print(f"[FlowalignImage] Encoded target image: {target_image_embeds.shape}")
+            print(f"[FlowalignImage] Encoded target image with CLIP: {target_image_embeds.shape}")
 
         # FlowAlign은 CFG 이용 안 함
         #if self.do_classifier_free_guidance:
@@ -1419,15 +1472,17 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         self._num_timesteps = len(timesteps)
         print(timesteps)
 
+        # Preprocess video (keep tensor for TI2V condition)
+        video_tensor = None
         if latents is None:
-            video = self.video_processor.preprocess_video(video, height=height, width=width).to(
+            video_tensor = self.video_processor.preprocess_video(video, height=height, width=width).to(
                 device, dtype=torch.float32
             )
 
         # 5. Prepare latent variables
         num_channels_latents = self.transformer.config.in_channels
         X0_src = self.flowedit_prepare_latents(
-            video,
+            video_tensor if video_tensor is not None else video,
             batch_size * num_videos_per_prompt,
             num_channels_latents,
             height,
@@ -1442,6 +1497,46 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         #X0_src = X0_src.to(transformer_dtype)
         #Zt_edit = Zt_edit.to(transformer_dtype)
         print("latent shape:", X0_src.shape) # torch.Size([1, 16, 13, 60, 104])
+
+        # 5.1 Prepare TI2V first-frame condition (expand_timesteps mode - WAN 2.2 TI2V models)
+        expand_timesteps = getattr(self.config, 'expand_timesteps', False)
+        source_condition = None
+        target_condition = None
+        first_frame_mask = None
+
+        if expand_timesteps:
+            print("[TI2V Mode] Using expand_timesteps for first-frame conditioning")
+            num_frames = len(video) if isinstance(video, list) else video_tensor.shape[2]
+            _, _, num_latent_frames, latent_height, latent_width = X0_src.shape
+
+            # Prepare source condition from video's first frame
+            if video_tensor is None:
+                video_tensor = self.video_processor.preprocess_video(video, height=height, width=width).to(
+                    device, dtype=torch.float32
+                )
+            first_frame = video_tensor[:, :, 0, :, :]  # [B, C, H, W]
+            source_condition, first_frame_mask = self.prepare_first_frame_condition(
+                first_frame, num_frames, latent_height, latent_width, device, transformer_dtype
+            )
+            print(f"[TI2V Mode] Source condition shape: {source_condition.shape}")
+
+            # Prepare target condition from target image (or fallback to source first frame)
+            if target_image is not None:
+                from torchvision import transforms
+                target_pil = target_image if isinstance(target_image, Image.Image) else target_image
+                target_transform = transforms.Compose([
+                    transforms.Resize((height, width)),
+                    transforms.ToTensor(),
+                    transforms.Normalize([0.5], [0.5]),
+                ])
+                target_frame = target_transform(target_pil).unsqueeze(0).to(device)  # [1, C, H, W]
+                target_condition, _ = self.prepare_first_frame_condition(
+                    target_frame, num_frames, latent_height, latent_width, device, transformer_dtype
+                )
+                print(f"[TI2V Mode] Target condition shape: {target_condition.shape}")
+            else:
+                target_condition = source_condition.clone()
+                print("[TI2V Mode] No target image, using source first frame as target condition")
 
         # 6. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
@@ -1510,6 +1605,17 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 #print(concat_latent_model_input.dtype) # torch.float16
                 #print(concat_latent_model_input.shape) # torch.Size([3, 16, 13, 60, 104])
 
+                # Apply first-frame condition for TI2V (expand_timesteps) mode
+                if expand_timesteps and source_condition is not None:
+                    # Build batch condition: [source, source, target]
+                    concat_condition = torch.stack([
+                        source_condition[0],  # Source for vq
+                        source_condition[0],  # Source for vp
+                        target_condition[0],  # Target for vp
+                    ], dim=0)
+                    # Apply mask: first frame uses condition, other frames use latent
+                    concat_latent_model_input = (1 - first_frame_mask) * concat_condition + first_frame_mask * concat_latent_model_input
+
                 concat_prompt_embeds = torch.stack(
                     [
                         source_prompt_embeds[0], # -> src
@@ -1521,8 +1627,8 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 #print(concat_prompt_embeds.shape) # torch.Size([3, 512, 4096])
                 #print(concat_prompt_embeds.dtype) # torch.float16
 
-                # Build image embeddings for batch (NEW: for image conditioning)
-                # Source samples (index 0, 1) use zeros, Target sample (index 2) uses target_image
+                # Build image embeddings for batch (NEW: for image conditioning with CLIP - I2V models)
+                # Note: For TI2V (expand_timesteps), image conditioning is via VAE, not CLIP
                 concat_image_embeds = None
                 if target_image_embeds is not None:
                     zero_image_embeds = torch.zeros_like(target_image_embeds)
@@ -1532,7 +1638,14 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                         target_image_embeds,    # Target for vp (with target image)
                     ], dim=0)
 
-                timestep = t.expand(concat_latent_model_input.shape[0])
+                # Prepare timestep (frame-dependent for expand_timesteps mode)
+                if expand_timesteps:
+                    # For expand_timesteps: first frame has t=0, other frames have t=t
+                    # temp_ts shape: [num_latent_frames * latent_h * latent_w]
+                    temp_ts = (first_frame_mask[0, 0, :, ::2, ::2] * t).flatten()
+                    timestep = temp_ts.unsqueeze(0).expand(concat_latent_model_input.shape[0], -1)
+                else:
+                    timestep = t.expand(concat_latent_model_input.shape[0])
 
                 # inference
                 #print(transformer_dtype) # torch.float16s

@@ -46,29 +46,51 @@ if __name__ == '__main__':
 
     config = get_args()
 
-    # Available models: Wan-AI/Wan2.1-T2V-14B-Diffusers, Wan-AI/Wan2.1-T2V-1.3B-Diffusers
-    # For image conditioning, use I2V models: Wan-AI/Wan2.1-I2V-14B-480P-Diffusers
-    ## Wan-AI/Wan2.1-T2V-1.3B-Diffusers
-    ## Wan-AI/Wan2.1-T2V-1.3B-Diffusers
+    # Available models:
+    # - Wan-AI/Wan2.1-T2V-14B-Diffusers, Wan-AI/Wan2.1-T2V-1.3B-Diffusers (T2V)
+    # - Wan-AI/Wan2.1-I2V-14B-480P-Diffusers (I2V with CLIP - architecture incompatible with FlowAlign)
+    # - Wan-AI/Wan2.2-TI2V-5B-Diffusers (TI2V with VAE-based image conditioning - RECOMMENDED)
 
-    # Check if target_image is specified - if so, use I2V model for image conditioning
+    # Check if target_image is specified and determine model type
     use_image_conditioning = config['video'].get('target_image', None) is not None
+    model_id = config.get('model_id', None)
 
-    if use_image_conditioning:
-        # Use I2V model for image conditioning
-        model_id = config.get('model_id', "Wan-AI/Wan2.1-I2V-14B-480P-Diffusers")
-        print(f"[Image Conditioning] Loading I2V model: {model_id}")
+    # Determine which model to use
+    if model_id is None:
+        if use_image_conditioning:
+            # Default to TI2V-5B for image conditioning (VAE-based, compatible with FlowAlign)
+            model_id = "Wan-AI/Wan2.2-TI2V-5B-Diffusers"
+        else:
+            # Default to T2V-1.3B for text-only
+            model_id = "Wan-AI/Wan2.1-T2V-1.3B-Diffusers"
 
-        # Load image encoder and processor
+    print(f"[Model] Loading: {model_id}")
+
+    # Check if it's a TI2V model (uses expand_timesteps, no CLIP encoder)
+    is_ti2v = "TI2V" in model_id or "2.2" in model_id
+
+    if is_ti2v:
+        # TI2V model: Uses VAE-based image conditioning (expand_timesteps mode)
+        print("[TI2V Mode] Using VAE-based first-frame conditioning")
+        vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
+        flow_shift = 3.0  # 3.0 for 480P
+        scheduler = UniPCMultistepScheduler(prediction_type='flow_prediction', use_flow_sigmas=True, num_train_timesteps=1000, flow_shift=flow_shift)
+        pipe = WanPipeline.from_pretrained(
+            model_id,
+            vae=vae,
+            torch_dtype=torch.bfloat16  # TI2V-5B works well with bfloat16
+        )
+    elif "I2V" in model_id:
+        # I2V model: Uses CLIP-based image conditioning (NOT recommended - architecture incompatible)
+        print("[I2V Mode] WARNING: I2V architecture may be incompatible with FlowAlign (36ch vs 16ch)")
         image_encoder = CLIPVisionModel.from_pretrained(
             model_id, subfolder="image_encoder", torch_dtype=torch.float32
         )
         image_processor = CLIPImageProcessor.from_pretrained(
             model_id, subfolder="image_processor"
         )
-
         vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
-        flow_shift = 3.0  # 3.0 for 480P
+        flow_shift = 3.0
         scheduler = UniPCMultistepScheduler(prediction_type='flow_prediction', use_flow_sigmas=True, num_train_timesteps=1000, flow_shift=flow_shift)
         pipe = WanPipeline.from_pretrained(
             model_id,
@@ -78,19 +100,22 @@ if __name__ == '__main__':
             torch_dtype=torch.float16
         )
     else:
-        # Use T2V model (original behavior)
-        model_id = "Wan-AI/Wan2.1-T2V-1.3B-Diffusers"
+        # T2V model: Text-only (original behavior)
         vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
-        flow_shift = 3.0 # 5.0 for 720P, 3.0 for 480P (1.3B only)
+        flow_shift = 3.0  # 5.0 for 720P, 3.0 for 480P
         scheduler = UniPCMultistepScheduler(prediction_type='flow_prediction', use_flow_sigmas=True, num_train_timesteps=1000, flow_shift=flow_shift)
-        pipe = WanPipeline.from_pretrained(model_id, vae=vae, torch_dtype=torch.float16) # dtype checking
+        pipe = WanPipeline.from_pretrained(model_id, vae=vae, torch_dtype=torch.float16)
 
     pipe.scheduler = scheduler
 
-    # Use CPU offload for large models (14B requires >32GB VRAM)
-    if use_image_conditioning:
+    # GPU memory management
+    if is_ti2v:
+        # TI2V-5B fits on single 32GB GPU
+        pipe.enable_model_cpu_offload()
+        print("[TI2V Mode] Using model CPU offload")
+    elif "14B" in model_id:
         pipe.enable_sequential_cpu_offload()
-        print("[Image Conditioning] Using sequential CPU offload for 14B model")
+        print("[Large Model] Using sequential CPU offload for 14B model")
     else:
         pipe.to("cuda")
 
