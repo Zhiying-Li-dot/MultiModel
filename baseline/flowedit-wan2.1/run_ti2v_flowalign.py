@@ -6,7 +6,7 @@ Uses the installed diffusers 0.36.0 which supports TI2V-5B VAE,
 and patches flowalign method at runtime.
 """
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "2"  # Use GPU 2 which has more free memory
+# Set CUDA_VISIBLE_DEVICES externally if needed
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 import torch

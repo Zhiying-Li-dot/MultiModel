@@ -8,9 +8,6 @@ import gc
 import math
 import os
 import sys
-
-os.environ["CUDA_VISIBLE_DEVICES"] = "2"
-
 import random
 import torch
 import imageio
