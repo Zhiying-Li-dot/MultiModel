@@ -88,7 +88,9 @@
 
 ### Action Items
 
-- [ ] 文献调研：搜索 "product video generation"、"video template"、"subject-driven video editing"
+- [x] 文献调研：搜索 "product video generation"、"video template"、"subject-driven video editing"
+  - 发现 E-CommerceVideo (淘宝/NeurIPS 2025)，但任务不同：I2V generation vs template transfer
+  - PVTT 任务有 novelty ✅
 - [ ] 收集 2-3 个典型的模板视频样例
 - [x] 用现有方法做初步实验（Baseline 完成）
 - [x] 确定 Baseline 方法：**FlowEdit**（ICLR 2025 Best Paper，简单直观）

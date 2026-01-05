@@ -31,20 +31,64 @@
 - **方法**：基于 Image-to-Video diffusion，保持时序一致性
 - **链接**：[Paper](https://dl.acm.org/doi/10.1145/3680528.3687656)
 
+### 6. FlowEdit (ICLR 2025 Best Paper)
+- **任务**：Text-guided video editing，保持源视频结构
+- **方法**：Training-free，基于 velocity 差分：`Zt += dt * (Vt_tar - Vt_src)`
+- **特点**：简单高效，无需训练，无需 inversion
+- **链接**：[Paper](https://arxiv.org/abs/2412.08629)
+
 ---
 
-## 二、与 PVTT 任务对比
+## 二、🚨 高度相关工作：电商视频生成
+
+### E-CommerceVideo (NeurIPS 2025 Datasets Track, Under Review)
+- **来源**：淘宝/阿里
+- **任务**：产品图片 → 产品展示视频
+- **数据集**：12 类产品，51 子类，多视角图片 + 视频 + 文本描述
+- **方法**：将产品信息注入预训练视频生成器
+- **链接**：[OpenReview](https://openreview.net/pdf/75d2eb71430170e2fe6c93a2ab6a83a3d8bfffe7.pdf)
+
+#### ⚠️ 与 PVTT 的关键差异
+
+| 对比项 | E-CommerceVideo | PVTT (我们) |
+|--------|-----------------|-------------|
+| **输入** | 多视角产品图 + 文本 | 模板视频 + 产品图 |
+| **输出** | 从零生成产品视频 | 迁移模板风格的产品视频 |
+| **任务类型** | Image-to-Video Generation | Template Transfer / Video Editing |
+| **模板** | ❌ 无 | ✅ 核心输入 |
+| **风格控制** | 文本描述 | 模板视频隐式定义 |
+| **方法** | 训练新模型 | Training-free (FlowEdit) |
+
+#### PVTT 的差异化价值
+1. **模板驱动** - 复用已验证成功的视频风格/运镜/节奏
+2. **商家友好** - 商家选择喜欢的模板，而非从零描述风格
+3. **低成本** - Training-free，无需大规模训练
+4. **可控性强** - 模板提供明确的风格参考
+
+### 其他电商/广告相关工作
+
+| 论文 | 任务 | 与 PVTT 差异 |
+|------|------|-------------|
+| [RefAdGen](https://arxiv.org/html/2508.11695) (2025) | 广告图片生成 | 图片，非视频 |
+| [StyleCrafter](https://dl.acm.org/doi/10.1145/3687975) (TOG 2024) | 视频风格迁移 | 艺术风格，非产品模板 |
+| [Place-Anything](https://arxiv.org/html/2402.14316v1) (2024) | 3D 物体插入视频 | 需要 3D 模型 |
+
+---
+
+## 三、与 PVTT 任务对比
 
 | 现有工作 | 输入 | PVTT 任务 | 差异 |
 |---------|------|-----------|------|
+| E-CommerceVideo | 产品图 + 文本 | 模板视频 + 产品图 | **最相关**，但 PVTT 有模板，是 editing 非 generation |
 | DreamVideo | 主体图 + 动作视频 | 模板视频 + 产品图 | PVTT 的模板包含完整风格/运镜 |
 | VideoSwap | 源视频 + 目标主体 | 模板视频 + 产品图 | PVTT 需要保持模板"风格"而非仅替换主体 |
 | MotionBooth | 主体图 + 运动控制 | 模板视频 + 产品图 | PVTT 的运动来自模板，不需要显式控制 |
 | DreamSwapV | mask + 参考图 | 模板视频 + 产品图 | 最接近，但 PVTT 强调"模板风格迁移" |
+| FlowEdit | 源视频 + 文本 | 模板视频 + 产品图 | **我们的 Baseline**，PVTT 增加产品图条件 |
 
 ---
 
-## 三、论文精读笔记
+## 四、论文精读笔记
 
 ### DreamSwapV (2025, Under Review)
 
@@ -131,7 +175,7 @@
 
 ---
 
-## 四、三篇论文总结对比
+## 五、三篇论文总结对比
 
 | 维度 | DreamSwapV | VideoSwap | MotionBooth |
 |------|-----------|-----------|-------------|
@@ -143,7 +187,7 @@
 
 ---
 
-## 五、PVTT 技术路线初步设想
+## 六、PVTT 技术路线初步设想
 
 1. **输入处理**
    - 模板视频 → 提取运动信息（bbox 序列 / attention pattern / 光流）
