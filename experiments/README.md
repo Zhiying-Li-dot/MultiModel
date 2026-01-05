@@ -4,9 +4,46 @@
 
 | 日期 | 实验 | 方法 | 结果 |
 |------|------|------|------|
+| 2026-01-05 | [枕套泛化测试](#pillow-generalization-2026-01-05) | FlowEdit + Wan2.1 | ✅ 成功 |
 | 2026-01-05 | [4-Way Comparison](#4-way-comparison-2026-01-05) | FlowEdit/FlowAlign × Wan2.1/2.2 | 详见对比 |
 | 2026-01-05 | [FlowAlign with Wan2.2 TI2V-5B](#flowalign-wan22-2026-01-05) | Wan2.2 TI2V-5B | ✅ T2V模式成功 |
 | 2026-01-04 | [Baseline: 手链→项链](#baseline-2026-01-04) | WANAlign2.1 | ⚠️ 部分成功 |
+
+---
+
+## Pillow Generalization (2026-01-05)
+
+### 实验目标
+
+验证 FlowEdit 方法在不同产品类型（家居类）上的泛化能力。
+
+### 实验配置
+
+| 配置项 | 值 |
+|--------|-----|
+| 输入视频 | `pillow_480p.mp4` (832×480, 49帧) |
+| 产品类型 | 家居-枕套（vs 之前的首饰-手链） |
+| Source Prompt | A decorative pillow cover with winter ski gear pattern... |
+| Target Prompt | A decorative pillow cover with tropical beach pattern... |
+| 方法 | FlowEdit (Wan2.1 T2V-1.3B) |
+
+### 结果
+
+| 评估项 | 结果 | 说明 |
+|--------|------|------|
+| 编辑效果 | ✅ 成功 | 图案风格有变化 |
+| 背景保持 | ✅ 成功 | 枕套形状/布料保持 |
+| 时序一致性 | ✅ 良好 | 无明显闪烁 |
+
+### 输出文件
+
+- 输入：`results/pillow_480p.mp4`
+- 输出：`results/flowedit-wan2.1/pillow_flowedit.mp4`
+- 对比：`results/pillow_comparison.mp4`
+
+### 结论
+
+FlowEdit 方法在家居类产品（枕套）上同样有效，验证了方法的泛化能力。
 
 ---
 
