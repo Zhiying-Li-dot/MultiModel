@@ -4,8 +4,63 @@
 
 | 日期 | 实验 | 方法 | 结果 |
 |------|------|------|------|
+| 2026-01-05 | [4-Way Comparison](#4-way-comparison-2026-01-05) | FlowEdit/FlowAlign × Wan2.1/2.2 | 详见对比 |
 | 2026-01-05 | [FlowAlign with Wan2.2 TI2V-5B](#flowalign-wan22-2026-01-05) | Wan2.2 TI2V-5B | ✅ T2V模式成功 |
 | 2026-01-04 | [Baseline: 手链→项链](#baseline-2026-01-04) | WANAlign2.1 | ⚠️ 部分成功 |
+
+---
+
+## 4-Way Comparison (2026-01-05)
+
+### 实验目标
+
+对比 FlowEdit 和 FlowAlign 两种方法，以及 Wan2.1 和 Wan2.2 两种模型的效果。
+
+### 实验配置
+
+| 配置项 | 值 |
+|--------|-----|
+| 输入视频 | `bracelet_shot1_480p.mp4` (832×480, 49帧) |
+| Source Prompt | Two personalized couple bracelets... |
+| Target Prompt | A gold charm necklace... |
+| strength | 0.7 |
+| steps | 50 |
+
+### 方法参数对比
+
+| 参数 | FlowEdit | FlowAlign |
+|------|----------|-----------|
+| guidance_scale | 13.5 (target) + 5.0 (source) | 19.5 |
+| zeta_scale | - | 0.001 |
+| 批处理 | 4样本 (src/tar × uncond/cond) | 3样本 (src, tar+src, tar+tar) |
+| 公式 | `Zt += dt * (Vt_tar - Vt_src)` | `Zt += dt * (vp - vq) + zeta * (...)` |
+
+### 模型参数对比
+
+| 参数 | Wan2.1 (flowedit-wan) | Wan2.2 (我们的实现) |
+|------|----------------------|---------------------|
+| 模型 | T2V-1.3B | TI2V-5B (T2V模式) |
+| z_dim | 16 | 48 |
+| shift | 3.0 | 3.0 |
+| 输出帧数 | 49 | 49 |
+| 输出分辨率 | 832×480 | 832×480 |
+
+### 对比结果
+
+| 实验 | 输出文件 |
+|------|----------|
+| Wan2.1 + FlowEdit | `comparison/wan21_flowedit.mp4` |
+| Wan2.1 + FlowAlign | `comparison/wan21_flowalign.mp4` |
+| Wan2.2 + FlowEdit | `comparison/wan22/wan22_flowedit_480p.mp4` |
+| Wan2.2 + FlowAlign | `comparison/wan22/wan22_flowalign_480p.mp4` |
+
+### 观察结论
+
+需要人工评估以下维度：
+1. **编辑效果**：手链是否被替换为项链
+2. **背景保持**：紫色丝绸背景是否保持
+3. **时序一致性**：产品是否有闪烁/抖动
+4. **产品细节**：项链细节是否清晰
 
 ---
 

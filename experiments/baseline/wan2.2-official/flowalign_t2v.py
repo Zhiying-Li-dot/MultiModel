@@ -38,7 +38,7 @@ def load_video(file_path: str):
     return images, fps
 
 
-def flowalign_t2v(
+def flowedit_t2v(
     model,
     vae,
     text_encoder,
@@ -50,15 +50,17 @@ def flowalign_t2v(
     shift=3.0,
     sampling_steps=50,
     strength=0.7,
-    target_guidance_scale=19.5,
-    zeta_scale=0.001,
+    target_guidance_scale=13.5,  # FlowEdit default
+    source_guidance_scale=5.0,   # FlowEdit uses source CFG too
+    zeta_scale=0.001,            # Only used for FlowAlign
+    method="flowalign",          # "flowedit" or "flowalign"
     seed=-1,
     offload_model=True,
     device="cuda",
     param_dtype=torch.bfloat16,
 ):
     """
-    FlowAlign for video editing using Wan2.2 TI2V-5B in T2V mode.
+    FlowEdit/FlowAlign for video editing using Wan2.2 TI2V-5B in T2V mode.
 
     Args:
         model: WanModel transformer
@@ -73,7 +75,9 @@ def flowalign_t2v(
         sampling_steps: Number of denoising steps
         strength: Edit strength (0.0-1.0), higher = more editing
         target_guidance_scale: CFG scale for target prompt
-        zeta_scale: Structure preservation scale
+        source_guidance_scale: CFG scale for source prompt (FlowEdit only)
+        zeta_scale: Structure preservation scale (FlowAlign only)
+        method: "flowedit" or "flowalign"
         seed: Random seed
         offload_model: Whether to offload models to CPU when not in use
         device: Target device
@@ -82,6 +86,7 @@ def flowalign_t2v(
     Returns:
         Edited video tensor [C, F, H, W]
     """
+    print(f"Using method: {method}")
     vae_stride = (4, 16, 16)
     patch_size = (1, 2, 2)
     num_train_timesteps = 1000
@@ -90,8 +95,10 @@ def flowalign_t2v(
     source_first = source_video[0]
     ih, iw = source_first.height, source_first.width
     dh, dw = patch_size[1] * vae_stride[1], patch_size[2] * vae_stride[2]
-    ow, oh = best_output_size(iw, ih, dw, dh, max_area)
-    print(f"Output size: {ow}x{oh}")
+    # Keep original resolution (align to patch_size * vae_stride)
+    ow = (iw // dw) * dw
+    oh = (ih // dh) * dh
+    print(f"Output size: {ow}x{oh} (original: {iw}x{ih})")
 
     # Limit frames
     F = min(frame_num, len(source_video))
@@ -154,9 +161,9 @@ def flowalign_t2v(
         model.to(device)
         torch.cuda.empty_cache()
 
-    # FlowAlign denoising loop
+    # Denoising loop
     with torch.amp.autocast('cuda', dtype=param_dtype), torch.no_grad():
-        for i, t in enumerate(tqdm(timesteps, desc="FlowAlign")):
+        for i, t in enumerate(tqdm(timesteps, desc=method)):
             t_i = t.item() / num_train_timesteps
             t_im1 = timesteps[i + 1].item() / num_train_timesteps if i + 1 < len(timesteps) else 0.0
 
@@ -164,35 +171,64 @@ def flowalign_t2v(
             noise = torch.randn(X0_src.shape, device=device, dtype=torch.float32)
             Zt_src = (1 - t_i) * X0_src + t_i * noise
 
-            # FlowAlign coupling: target shares noise with source
+            # Coupling: target shares noise with source
             Zt_tar = Zt_edit + (Zt_src - X0_src)
 
-            # Prepare batch: [Zt_src, Zt_tar, Zt_tar] with [source, source, target] prompts
-            concat_context = [context_source[0], context_source[0], context_target[0]]
-            timestep = t.expand(seq_len).unsqueeze(0).expand(3, -1)
+            if method == "flowedit":
+                # FlowEdit: batch [Zt_src, Zt_tar] with CFG for both
+                # Need 4 forward passes: src_uncond, tar_uncond, src_cond, tar_cond
+                concat_context = [
+                    context_source[0],  # src uncond (use source as "uncond")
+                    context_source[0],  # tar uncond
+                    context_source[0],  # src cond
+                    context_target[0],  # tar cond
+                ]
+                timestep = t.expand(seq_len).unsqueeze(0).expand(4, -1)
 
-            # Model forward pass
-            concat_flow_pred = model(
-                [Zt_src, Zt_tar, Zt_tar],
-                t=timestep,
-                context=concat_context,
-                seq_len=seq_len
-            )
+                concat_flow_pred = model(
+                    [Zt_src, Zt_tar, Zt_src, Zt_tar],
+                    t=timestep,
+                    context=concat_context,
+                    seq_len=seq_len
+                )
 
-            vq_source, vp_source, vp_target = concat_flow_pred
+                src_pred_uncond, tar_pred_uncond, src_pred_cond, tar_pred_cond = concat_flow_pred
+
+                # CFG for both source and target
+                Vt_src = src_pred_uncond + source_guidance_scale * (src_pred_cond - src_pred_uncond)
+                Vt_tar = tar_pred_uncond + target_guidance_scale * (tar_pred_cond - tar_pred_uncond)
+
+                # FlowEdit update: simple velocity difference
+                Zt_edit = Zt_edit.to(torch.float32)
+                V_delta = Vt_tar - Vt_src
+                Zt_edit = Zt_edit + (t_im1 - t_i) * V_delta
+
+            else:  # flowalign
+                # FlowAlign: batch [Zt_src, Zt_tar, Zt_tar] with [src, src, tar] prompts
+                concat_context = [context_source[0], context_source[0], context_target[0]]
+                timestep = t.expand(seq_len).unsqueeze(0).expand(3, -1)
+
+                concat_flow_pred = model(
+                    [Zt_src, Zt_tar, Zt_tar],
+                    t=timestep,
+                    context=concat_context,
+                    seq_len=seq_len
+                )
+
+                vq_source, vp_source, vp_target = concat_flow_pred
+
+                # CFG-style mixing for target velocity
+                vp = vp_source + target_guidance_scale * (vp_target - vp_source)
+                vq = vq_source
+
+                # FlowAlign update with structure preservation
+                Zt_edit = Zt_edit.to(torch.float32)
+                edit_term = (t_im1 - t_i) * (vp - vq)
+                zeta_term = zeta_scale * (Zt_src - t_i * vq - Zt_tar + t_i * vp)
+                Zt_edit = Zt_edit + edit_term + zeta_term
 
             if offload_model:
                 torch.cuda.empty_cache()
-
-            # CFG-style mixing for target velocity
-            vp = vp_source + target_guidance_scale * (vp_target - vp_source)
-            vq = vq_source
-
-            # FlowAlign update with structure preservation
-            Zt_edit = Zt_edit.to(torch.float32)
-            edit_term = (t_im1 - t_i) * (vp - vq)
-            zeta_term = zeta_scale * (Zt_src - t_i * vq - Zt_tar + t_i * vp)
-            Zt_edit = Zt_edit + edit_term + zeta_term
 
     # Offload model
     if offload_model:
@@ -211,7 +247,7 @@ def flowalign_t2v(
 
 
 def main():
-    parser = argparse.ArgumentParser(description="FlowAlign video editing with Wan2.2")
+    parser = argparse.ArgumentParser(description="FlowEdit/FlowAlign video editing with Wan2.2")
     parser.add_argument("--ckpt_dir", type=str, required=True, help="Path to Wan2.2-TI2V-5B checkpoint")
     parser.add_argument("--video", type=str, required=True, help="Source video path")
     parser.add_argument("--source_prompt", type=str, required=True, help="Description of source video")
@@ -219,11 +255,17 @@ def main():
     parser.add_argument("--output", type=str, default="output.mp4", help="Output video path")
     parser.add_argument("--frame_num", type=int, default=17, help="Number of frames to process")
     parser.add_argument("--strength", type=float, default=0.7, help="Edit strength (0.0-1.0)")
-    parser.add_argument("--guidance_scale", type=float, default=19.5, help="Target guidance scale")
-    parser.add_argument("--zeta_scale", type=float, default=0.001, help="Structure preservation scale")
+    parser.add_argument("--method", type=str, default="flowalign", choices=["flowedit", "flowalign"], help="Editing method")
+    parser.add_argument("--target_guidance_scale", type=float, default=None, help="Target guidance scale (default: 13.5 for flowedit, 19.5 for flowalign)")
+    parser.add_argument("--source_guidance_scale", type=float, default=5.0, help="Source guidance scale (flowedit only)")
+    parser.add_argument("--zeta_scale", type=float, default=0.001, help="Structure preservation scale (flowalign only)")
     parser.add_argument("--steps", type=int, default=50, help="Number of sampling steps")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     args = parser.parse_args()
+
+    # Set default guidance scale based on method
+    if args.target_guidance_scale is None:
+        args.target_guidance_scale = 13.5 if args.method == "flowedit" else 19.5
 
     device = torch.device("cuda")
     config = WAN_CONFIGS["ti2v-5B"]
@@ -250,7 +292,7 @@ def main():
     source_video, fps = load_video(args.video)
     print(f"Loaded {len(source_video)} frames at {fps} fps")
 
-    output = flowalign_t2v(
+    output = flowedit_t2v(
         model=model,
         vae=vae,
         text_encoder=text_encoder,
@@ -260,8 +302,10 @@ def main():
         max_area=704 * 1280,
         frame_num=args.frame_num,
         strength=args.strength,
-        target_guidance_scale=args.guidance_scale,
+        target_guidance_scale=args.target_guidance_scale,
+        source_guidance_scale=args.source_guidance_scale,
         zeta_scale=args.zeta_scale,
+        method=args.method,
         sampling_steps=args.steps,
         seed=args.seed,
         offload_model=True,
