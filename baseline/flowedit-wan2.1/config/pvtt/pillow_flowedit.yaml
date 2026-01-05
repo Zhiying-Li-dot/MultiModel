@@ -1,0 +1,21 @@
+# PVTT Experiment: Pillow video with FlowEdit
+# Testing generalization to different product type (home decor)
+video:
+    video_path: ./videos/pillow_480p.mp4
+    source_prompt: A decorative pillow cover with winter ski gear pattern, embroidered design featuring skiing figures on white fabric.
+    target_prompt: A decorative pillow cover with tropical beach pattern, embroidered design featuring palm trees and sunset on white fabric.
+    source_blend: ski gear pattern
+    target_blend: beach pattern
+
+infernece:
+    num_inference_step: 50
+
+training-free-type:
+    flag_flowedit: True
+    flag_flowalign: False
+
+flowedit:
+    strength: 0.7
+    target_guidance_scale: 13.5
+    source_guidance_scale: 5.0
+    save_video: ./results/pvtt/pillow_flowedit.mp4
