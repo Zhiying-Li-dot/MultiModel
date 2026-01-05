@@ -1,4 +1,4 @@
-# PVTT Comparison: wan2.1 + FlowAlign
+# PVTT Comparison: wan2.1 + WANAlign2.1 (FlowAlign + MasaCtrl masking)
 video:
     video_path: ./videos/bracelet_shot1_480p.mp4
     source_prompt: Two personalized couple bracelets, one silver and one black, placed on a purple silk fabric with decorative stones.
@@ -19,4 +19,4 @@ flowalign:
     flag_attnmask: True
     zeta_scale: 1e-3
     bg_zeta_scale: 1e-3
-    save_video: ./results/comparison/wan21_flowalign.mp4
+    save_video: ./results/comparison/wan21_wanalign.mp4

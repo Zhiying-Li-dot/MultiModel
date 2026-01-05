@@ -49,10 +49,10 @@
 
 | 实验 | 输出文件 |
 |------|----------|
-| Wan2.1 + FlowEdit | `comparison/wan21_flowedit.mp4` |
-| Wan2.1 + FlowAlign | `comparison/wan21_flowalign.mp4` |
-| Wan2.2 + FlowEdit | `comparison/wan22/wan22_flowedit_480p.mp4` |
-| Wan2.2 + FlowAlign | `comparison/wan22/wan22_flowalign_480p.mp4` |
+| Wan2.1 + FlowEdit | `results/wan21_flowedit.mp4` |
+| Wan2.1 + FlowAlign | `results/wan21_flowalign.mp4` |
+| Wan2.2 + FlowEdit | `results/wan22/wan22_flowedit_480p.mp4` |
+| Wan2.2 + FlowAlign | `results/wan22/wan22_flowalign_480p.mp4` |
 
 ### 观察结论
 
@@ -124,7 +124,7 @@ steps = 50               # 采样步数
 ### 运行方法
 
 ```bash
-cd experiments/baseline/wan2.2-official
+cd baseline/flowedit-wan2.2
 
 python flowalign_t2v.py \
   --ckpt_dir ./Wan2.2-TI2V-5B \
@@ -136,8 +136,8 @@ python flowalign_t2v.py \
 
 ### 输出文件
 
-- `wan2.2-official/results/flowalign_t2v_shift3.mp4` - 最佳结果（shift=3.0）
-- `wan2.2-official/results/ti2v_necklace_normal.mp4` - 正常TI2V生成（验证模型正常）
+- `baseline/flowedit-wan2.2/results/flowalign_t2v_shift3.mp4` - 最佳结果（shift=3.0）
+- `baseline/flowedit-wan2.2/results/ti2v_necklace_normal.mp4` - 正常TI2V生成（验证模型正常）
 
 ### 待解决问题
 
@@ -153,7 +153,7 @@ python flowalign_t2v.py \
 
 | 项目 | 值 |
 |------|-----|
-| 输入视频 | `baseline/bracelet_shot1_480p.mp4` (832×480, 49帧, 3s) |
+| 输入视频 | `results/bracelet_shot1_480p.mp4` (832×480, 49帧, 3s) |
 | Source Prompt | Two personalized couple bracelets, one silver and one black, placed on a purple silk fabric with decorative stones. |
 | Target Prompt | A gold charm necklace with colorful gemstone pendants placed on a purple silk fabric with decorative stones. |
 | 方法 | WANAlign2.1 (FlowAlign + WAN2.1-1.3B) |
@@ -179,8 +179,8 @@ Baseline 验证了预期：
 
 ### 输出文件
 
-- 输入：`baseline/bracelet_shot1_480p.mp4`
-- 输出：`baseline/flowalign_bracelet_to_necklace.mp4`
+- 输入：`results/bracelet_shot1_480p.mp4`
+- 输出：`results/flowalign_bracelet_to_necklace.mp4`
 
 ---
 
@@ -198,7 +198,7 @@ pip install omegaconf imageio imageio-ffmpeg matplotlib ftfy
 pip install transformers==4.51.3
 
 # 安装 custom diffusers
-cd experiments/baseline/flowedit-wan/diffusers
+cd baseline/flowedit-wan2.1/diffusers
 pip install -e .
 ```
 
@@ -206,6 +206,6 @@ pip install -e .
 
 ```bash
 export HF_ENDPOINT=https://hf-mirror.com
-cd experiments/baseline/flowedit-wan
+cd baseline/flowedit-wan2.1
 python awesome_wan_editing.py --config=./config/pvtt/bracelet_to_necklace.yaml
 ```
