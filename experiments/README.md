@@ -49,10 +49,10 @@
 
 | 实验 | 输出文件 |
 |------|----------|
-| Wan2.1 + FlowEdit | `results/wan21_flowedit.mp4` |
-| Wan2.1 + FlowAlign | `results/wan21_flowalign.mp4` |
-| Wan2.2 + FlowEdit | `results/wan22/wan22_flowedit_480p.mp4` |
-| Wan2.2 + FlowAlign | `results/wan22/wan22_flowalign_480p.mp4` |
+| Wan2.1 + FlowEdit | `results/flowedit-wan2.1/wan21_flowedit.mp4` |
+| Wan2.1 + FlowAlign | `results/flowedit-wan2.1/wan21_flowalign.mp4` |
+| Wan2.2 + FlowEdit | `results/flowedit-wan2.2/wan22_flowedit_480p.mp4` |
+| Wan2.2 + FlowAlign | `results/flowedit-wan2.2/wan22_flowalign_480p.mp4` |
 
 ### 观察结论
 
@@ -180,7 +180,7 @@ Baseline 验证了预期：
 ### 输出文件
 
 - 输入：`results/bracelet_shot1_480p.mp4`
-- 输出：`results/flowalign_bracelet_to_necklace.mp4`
+- 输出：`results/flowedit-wan2.1/flowalign_bracelet_to_necklace.mp4`
 
 ---
 
