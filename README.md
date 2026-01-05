@@ -16,16 +16,21 @@
 
 ```
 pvtt/
-├── data/                 # 数据集
-│   └── samples/          # 样例数据
-├── src/                  # 源代码
-├── experiments/          # 实验记录
-│   ├── README.md         # 实验结果汇总
-│   └── baseline/         # Baseline 实验
-└── docs/                 # 文档
-    ├── research-plan.md  # 研究计划
-    ├── literature-review.md  # 文献综述
-    └── baseline-design.md    # Baseline 设计
+├── baseline/                    # Baseline 实现
+│   ├── flowedit-wan2.1/         # Wan2.1 T2V-1.3B (FlowEdit/FlowAlign/WANAlign)
+│   └── flowedit-wan2.2/         # Wan2.2 TI2V-5B (FlowEdit/FlowAlign)
+├── data/                        # 数据集
+│   └── samples/                 # 样例数据
+├── src/                         # 源代码
+├── experiments/                 # 实验记录
+│   ├── README.md                # 实验结果汇总
+│   └── results/                 # 实验输出
+│       ├── flowedit-wan2.1/     # Wan2.1 结果
+│       └── flowedit-wan2.2/     # Wan2.2 结果
+└── docs/                        # 文档
+    ├── research-plan.md         # 研究计划
+    ├── literature-review.md     # 文献综述
+    └── baseline-design.md       # Baseline 设计
 ```
 
 ## 研究进度
@@ -35,7 +40,8 @@ pvtt/
   - [x] VideoSwap (CVPR 2024)
   - [x] MotionBooth (NeurIPS 2024)
 - [x] 收集模板视频样例
-- [x] Baseline 实验 (WANAlign2.1)
+- [x] Baseline 实验
+  - [x] 4-Way Comparison: FlowEdit/FlowAlign × Wan2.1/Wan2.2
   - ✅ 产品替换成功
   - ⚠️ 时序一致性问题
   - ⚠️ 细节清晰度不足
@@ -43,6 +49,19 @@ pvtt/
 - [ ] 数据集构建
 - [ ] 完整实验
 - [ ] 论文写作
+
+## Baseline 方法
+
+| 方法 | 论文 | 说明 |
+|------|------|------|
+| FlowEdit | [arXiv:2412.08629](https://arxiv.org/abs/2412.08629) | 基于 velocity 差分的视频编辑 |
+| FlowAlign | [arXiv:2505.23145](https://arxiv.org/abs/2505.23145) | FlowEdit + zeta 正则化项 |
+| WANAlign2.1 | - | FlowAlign + MasaCtrl masking |
+
+| 模型 | 参数量 | 说明 |
+|------|--------|------|
+| Wan2.1 T2V-1.3B | 1.3B | flowedit-wan2.1 |
+| Wan2.2 TI2V-5B | 5B | flowedit-wan2.2 (T2V 模式) |
 
 ## 快速链接
 

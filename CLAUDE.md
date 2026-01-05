@@ -18,13 +18,13 @@ ssh 5090
 export HF_ENDPOINT=https://hf-mirror.com
 
 # Run FlowAlign baseline
-cd ~/pvtt/experiments/baseline/flowedit-wan
+cd ~/pvtt/baseline/flowedit-wan2.1
 ~/.conda/envs/wan/bin/python awesome_wan_editing.py --config=./config/pvtt/bracelet_to_necklace.yaml
 ```
 
 ## Creating New Experiment Configs
 
-Add YAML configs to `experiments/baseline/flowedit-wan/config/pvtt/`:
+Add YAML configs to `baseline/flowedit-wan/config/pvtt/`:
 
 ```yaml
 video:
@@ -48,9 +48,11 @@ flowalign:
 
 ## Key Directories
 
+- `baseline/flowedit-wan2.1/` - WANAlign2.1 baseline code (Wan2.1)
+- `baseline/flowedit-wan2.2/` - FlowAlign with Wan2.2 TI2V-5B
+- `experiments/README.md` - Experiment records
+- `experiments/results/` - Experiment output videos
 - `docs/` - Research plan, literature review, baseline design
-- `experiments/README.md` - Experiment results (update this when adding new experiments)
-- `experiments/baseline/flowedit-wan/` - WANAlign2.1 baseline code
 - `data/samples/` - Sample product videos and images
 
 ## Remote Machine Access

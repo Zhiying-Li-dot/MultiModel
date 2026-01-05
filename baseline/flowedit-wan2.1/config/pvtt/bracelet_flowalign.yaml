@@ -1,0 +1,22 @@
+# PVTT Comparison: wan2.1 + FlowAlign
+video:
+    video_path: ./videos/bracelet_shot1_480p.mp4
+    source_prompt: Two personalized couple bracelets, one silver and one black, placed on a purple silk fabric with decorative stones.
+    target_prompt: A gold charm necklace with colorful gemstone pendants placed on a purple silk fabric with decorative stones.
+    source_blend: bracelets
+    target_blend: necklace
+
+infernece:
+    num_inference_step: 50
+
+training-free-type:
+    flag_flowedit: False
+    flag_flowalign: True
+
+flowalign:
+    strength: 0.7
+    target_guidance_scale: 19.5
+    flag_attnmask: False
+    zeta_scale: 1e-3
+    bg_zeta_scale: 1e-3
+    save_video: ./results/comparison/wan21_flowalign.mp4
