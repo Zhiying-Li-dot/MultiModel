@@ -1,0 +1,86 @@
+{
+  "version": "1.0",
+  "created": "2026-01-05",
+  "description": "PVTT Benchmark Dataset - Product Video Template Transfer",
+  "samples": [
+    {
+      "id": "JEW001",
+      "category": "jewelry",
+      "subcategory": "necklace",
+      "source_listing_id": "489997879",
+      "template_video": {
+        "path": "videos/jewelry/JEW001.mp4",
+        "source": "etsy",
+        "source_url": "https://www.etsy.com/listing/489997879/family-charm-necklace-custom-birthstone"
+      },
+      "source_product": {
+        "image_path": "images/jewelry/JEW001_source.jpg",
+        "description": "Family Charm Necklace, Custom Birthstone Initial Necklace, Unique Gift for New Mom, Personalized mom necklace with kids initials Stamped"
+      },
+      "target_product": {
+        "image_path": null,
+        "description": ""
+      },
+      "prompts": {
+        "source": "",
+        "target": ""
+      },
+      "difficulty": "medium",
+      "shot_type": "pure_product",
+      "notes": "Auto-collected from Etsy on 2026-01-06",
+      "added_date": "2026-01-06"
+    },
+    {
+      "id": "JEW002",
+      "category": "jewelry",
+      "subcategory": "bracelet",
+      "template_video": {
+        "path": "videos/jewelry/JEW002.mp4",
+        "source": "etsy",
+        "source_url": "https://www.etsy.com/listing/615384498/personalized-couple-bracelets-set-two"
+      },
+      "source_product": {
+        "image_path": "images/jewelry/JEW002_source.webp",
+        "description": "Personalized Couple Bracelets Set Two"
+      },
+      "target_product": {
+        "image_path": null,
+        "description": ""
+      },
+      "prompts": {
+        "source": "Two personalized couple bracelets, one silver and one black, placed on a purple silk fabric with decorative stones.",
+        "target": "A gold charm necklace with colorful gemstone pendants placed on a purple silk fabric with decorative stones."
+      },
+      "difficulty": "medium",
+      "shot_type": "pure_product",
+      "notes": "Migrated from data/samples/",
+      "added_date": "2026-01-06"
+    },
+    {
+      "id": "HOME001",
+      "category": "home",
+      "subcategory": "pillow",
+      "template_video": {
+        "path": "videos/home/HOME001.mp4",
+        "source": "etsy",
+        "source_url": "https://www.etsy.com/listing/1138633008/winter-ski-gear-pillow-cover-12x20-inch"
+      },
+      "source_product": {
+        "image_path": "images/home/HOME001_source.webp",
+        "description": "Winter Ski Gear Pillow Cover 12x20 Inch"
+      },
+      "target_product": {
+        "image_path": null,
+        "description": ""
+      },
+      "prompts": {
+        "source": "A decorative pillow cover with winter ski gear pattern, embroidered design featuring skiing figures on white fabric.",
+        "target": "A decorative pillow cover with tropical beach pattern, embroidered design featuring palm trees and sunset on white fabric."
+      },
+      "difficulty": "medium",
+      "shot_type": "pure_product",
+      "notes": "Migrated from data/samples/",
+      "added_date": "2026-01-06"
+    }
+  ]
+}

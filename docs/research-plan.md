@@ -91,12 +91,46 @@
 - [x] 文献调研：搜索 "product video generation"、"video template"、"subject-driven video editing"
   - 发现 E-CommerceVideo (淘宝/NeurIPS 2025)，但任务不同：I2V generation vs template transfer
   - PVTT 任务有 novelty ✅
-- [ ] 收集 2-3 个典型的模板视频样例
+- [x] 收集 2-3 个典型的模板视频样例 → 已有 3 个 (项链、手链、枕套)
 - [x] 用现有方法做初步实验（Baseline 完成）
 - [x] 确定 Baseline 方法：**FlowEdit**（ICLR 2025 Best Paper，简单直观）
+- [x] 验证 FlowEdit 泛化能力（枕套实验成功）
+
+---
+
+## 阶段 2 详细计划（2026年2-4月）
+
+### 目标
+构建 100+ 样本的 PVTT Benchmark 数据集
+
+### 数据集设计
+
+详见 [数据集设计文档](./dataset-design.md)
+
+**核心结构**：
+- 样本格式：(Template Video, Source Image, Target Image, Annotations)
+- 品类：首饰、家居、美妆、服饰、电子
+- 镜头类型：纯产品镜头（P0）、产品特写（P0）、交互镜头（P1）、佩戴镜头（P2）
+
+**工具脚本**（`scripts/` 目录）：
+- `extract_video_metadata.py` - 视频元数据提取
+- `detect_shots.py` - 镜头检测
+- `add_sample.py` - 添加样本到数据集
+
+### Action Items
+
+- [x] 设计数据集结构和标注 Schema
+- [x] 创建目录结构和初始化文件
+- [x] 创建数据处理脚本
+- [ ] 从 Etsy 收集首批 10 个首饰类样本
+- [ ] 扩展到 60 个样本（2月底）
+- [ ] 完成 100+ 样本收集（3月底）
+
+---
 
 ## 相关文档
 
 - [文献综述](./literature-review.md)
 - [Baseline 设计](./baseline-design.md)
+- [数据集设计](./dataset-design.md)
 - [实验结果](../experiments/README.md)
