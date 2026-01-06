@@ -13,6 +13,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
 async function downloadSample(data) {
   try {
+    // 验证必需字段
+    if (!data.listingId || !data.productHandle) {
+      return { success: false, error: 'Missing listing ID or product handle' };
+    }
+
+    if (!data.videos || data.videos.length === 0) {
+      return { success: false, error: 'No videos found for this product' };
+    }
+
     // 从 breadcrumbs 获取分类信息
     const etsyTaxonomy = data.breadcrumbs || [];
     if (etsyTaxonomy.length === 0) {
@@ -23,7 +32,9 @@ async function downloadSample(data) {
     const now = new Date();
     const date = now.toISOString().split('T')[0]; // 格式：2026-01-06
 
-    const folderName = `${data.listingId}_${data.productHandle}`;
+    // 清理 productHandle 中的文件系统非法字符
+    const sanitizedHandle = data.productHandle.replace(/[/\\?%*:|"<>]/g, '-');
+    const folderName = `${data.listingId}_${sanitizedHandle}`;
     const basePath = `PVTT/${date}/${folderName}`;
 
     // 下载视频
@@ -33,9 +44,16 @@ async function downloadSample(data) {
     // 下载所有图片
     const imageFilenames = [];
     for (let i = 0; i < data.images.length; i++) {
-      const ext = data.images[i].includes('.webp') ? '.webp' : '.jpg';
+      const url = data.images[i];
+      // 更健壮的文件扩展名检测
+      let ext = '.jpg'; // 默认
+      if (url.includes('.webp')) ext = '.webp';
+      else if (url.includes('.png')) ext = '.png';
+      else if (url.includes('.jpeg')) ext = '.jpeg';
+      else if (url.includes('.gif')) ext = '.gif';
+
       const filename = `image_${i + 1}${ext}`;
-      await downloadFile(data.images[i], `${basePath}/${filename}`);
+      await downloadFile(url, `${basePath}/${filename}`);
       imageFilenames.push(filename);
     }
 

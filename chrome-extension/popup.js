@@ -123,13 +123,34 @@ function displayData(data) {
 
 // 下载按钮
 document.getElementById('downloadBtn').addEventListener('click', async () => {
-  if (!currentData || currentData.videos.length === 0) {
+  // 全面验证数据完整性
+  if (!currentData) {
+    showStatus('No data available', 'error');
+    return;
+  }
+
+  if (!currentData.listingId) {
+    showStatus('Missing listing ID', 'error');
+    return;
+  }
+
+  if (!currentData.productHandle) {
+    showStatus('Missing product handle', 'error');
+    return;
+  }
+
+  if (!currentData.videos || currentData.videos.length === 0) {
     showStatus('No video to download', 'error');
     return;
   }
 
   if (!currentData.breadcrumbs || currentData.breadcrumbs.length === 0) {
     showStatus('No category information found', 'error');
+    return;
+  }
+
+  if (!currentData.title) {
+    showStatus('Missing product title', 'error');
     return;
   }
 
@@ -141,10 +162,15 @@ document.getElementById('downloadBtn').addEventListener('click', async () => {
       action: 'downloadSample',
       data: currentData
     }, (response) => {
-      if (response.success) {
+      if (chrome.runtime.lastError) {
+        showStatus('Error: ' + chrome.runtime.lastError.message, 'error');
+        return;
+      }
+
+      if (response && response.success) {
         showStatus(`✓ Downloaded listing ${response.listingId}`, 'success');
       } else {
-        showStatus('Error: ' + response.error, 'error');
+        showStatus('Error: ' + (response?.error || 'Unknown error'), 'error');
       }
     });
   } catch (error) {
