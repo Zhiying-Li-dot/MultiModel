@@ -1,11 +1,18 @@
 # 1) define
 import os
+
+# CRITICAL: Set CUDA device BEFORE any imports that might initialize CUDA
+# This MUST be done before torch, transformers, diffusers are imported
+if 'CUDA_VISIBLE_DEVICES' not in os.environ:
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0'  # fallback to GPU 0 if not set
+
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
-# Ensure CUDA_VISIBLE_DEVICES is set before importing torch
+# Debug: Print which GPU we're using
 import sys
 if len(sys.argv) > 1:
-    print(f"[CUDA] CUDA_VISIBLE_DEVICES = {os.environ.get('CUDA_VISIBLE_DEVICES', 'not set')}")
+    print(f"[CUDA] CUDA_VISIBLE_DEVICES = {os.environ.get('CUDA_VISIBLE_DEVICES')}")
+    print(f"[CUDA] Will use GPU {os.environ['CUDA_VISIBLE_DEVICES']} (mapped to cuda:0)")
 
 import torch
 import imageio
