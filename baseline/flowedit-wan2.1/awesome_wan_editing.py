@@ -15,6 +15,18 @@ if len(sys.argv) > 1:
     print(f"[CUDA] Will use GPU {os.environ['CUDA_VISIBLE_DEVICES']} (mapped to cuda:0)")
 
 import torch
+
+# Force PyTorch to respect CUDA_VISIBLE_DEVICES by setting device early
+if torch.cuda.is_available():
+    print(f"[CUDA] torch.cuda.device_count() = {torch.cuda.device_count()}")
+    print(f"[CUDA] torch.cuda.current_device() = {torch.cuda.current_device()}")
+    if 'CUDA_VISIBLE_DEVICES' in os.environ:
+        # When CUDA_VISIBLE_DEVICES=6, PyTorch sees it as device 0
+        # So we explicitly set device 0 (which is the GPU we want)
+        torch.cuda.set_device(0)
+        print(f"[CUDA] Forced torch to use device 0 (physical GPU {os.environ['CUDA_VISIBLE_DEVICES']})")
+        print(f"[CUDA] After set_device: torch.cuda.current_device() = {torch.cuda.current_device()}")
+
 import imageio
 import requests
 from PIL import Image
