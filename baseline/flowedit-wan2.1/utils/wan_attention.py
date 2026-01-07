@@ -186,7 +186,7 @@ class MasaCtrlProcessor(nn.Module):
         # TODO: check model embedding dimension (6/7)
         self.text_length = 512
         self.video_length = 20280
-        self.F_out = frame_num//4 + 1 # flexible
+        self.F_out = frame_num//4 + 1  # Causal VAE characteristic
         self.H_out = 30
         self.W_out = 52 
         #self.local_blending_source = None

@@ -44,14 +44,22 @@ from utils.wan_attention import register_attention_processor
 # helper function to load videos
 def load_video(file_path: str):
     images = []
-    
+
     # Assuming it's a local file path
     vid = imageio.get_reader(file_path)
 
     fps = vid.get_meta_data()['fps']
-    #print("fps:", fps)
 
+    # Load all frames and take first 49 frames to match original setup
+    all_frames = []
     for frame in vid:
+        all_frames.append(frame)
+
+    # Take first 49 frames (same as horsejump-high example)
+    frames_to_use = all_frames[:49]
+    print(f"[Video] Total frames: {len(all_frames)}, Using first 49 frames")
+
+    for frame in frames_to_use:
         pil_image = Image.fromarray(frame)
         images.append(pil_image)
 
