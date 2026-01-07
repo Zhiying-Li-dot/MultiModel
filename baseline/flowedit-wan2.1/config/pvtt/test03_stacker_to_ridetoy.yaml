@@ -5,8 +5,8 @@ video:
     video_path: ../../data/pvtt-benchmark/videos/toys/TOYS001.mp4
     source_prompt: A khaki wooden ring stacker toy, rainbow nursery decor pyramid Montessori baby toy on a neutral background.
     target_prompt: A personalized wooden ride-on toy for toddlers, first birthday nursery room decor gift on wheels.
-    source_blend: ring stacker
-    target_blend: ride-on toy
+    source_blend: stacker
+    target_blend: toy
 
 infernece:
     num_inference_step: 50

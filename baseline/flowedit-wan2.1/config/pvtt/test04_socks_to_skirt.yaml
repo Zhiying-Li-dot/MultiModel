@@ -5,8 +5,8 @@ video:
     video_path: ../../data/pvtt-benchmark/videos/clothing/CLOT001.mp4
     source_prompt: Hand knitted wool socks, extra thick warm winter socks in neutral colors displayed on a clean background.
     target_prompt: Midi wool plaid skirt, high waisted retro tartan swing skirt in autumn colors displayed elegantly.
-    source_blend: wool socks
-    target_blend: plaid skirt
+    source_blend: socks
+    target_blend: skirt
 
 infernece:
     num_inference_step: 50
