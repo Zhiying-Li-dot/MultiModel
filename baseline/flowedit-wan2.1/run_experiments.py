@@ -277,14 +277,24 @@ def main():
         default=Path(__file__).parent.parent.parent / "data",
         help="数据目录（包含pvtt-benchmark）"
     )
+    parser.add_argument(
+        "--results-dir",
+        type=Path,
+        default=None,
+        help="结果保存目录（默认：项目根目录/experiments/results/flowalign-wan2.1）"
+    )
 
     args = parser.parse_args()
+
+    # 默认结果目录：pvtt/experiments/results/flowalign-wan2.1/
+    if args.results_dir is None:
+        args.results_dir = args.base_dir.parent.parent / "experiments" / "results" / "flowalign-wan2.1"
 
     # 初始化Runner
     runner = ExperimentRunner(
         base_dir=args.base_dir,
         data_dir=args.data_dir,
-        results_dir=args.base_dir / "results" / "pvtt",
+        results_dir=args.results_dir,
         config_dir=args.base_dir / "config" / "pvtt"
     )
 

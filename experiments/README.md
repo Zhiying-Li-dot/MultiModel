@@ -1,248 +1,87 @@
-# 实验记录
+# PVTT 实验记录
 
-## 实验列表
+本目录统一管理所有 PVTT 项目的实验结果、配置、分析报告等。
 
-| 日期 | 实验 | 方法 | 结果 |
-|------|------|------|------|
-| 2026-01-05 | [枕套泛化测试](#pillow-generalization-2026-01-05) | FlowEdit + Wan2.1 | ✅ 成功 |
-| 2026-01-05 | [4-Way Comparison](#4-way-comparison-2026-01-05) | FlowEdit/FlowAlign × Wan2.1/2.2 | 详见对比 |
-| 2026-01-05 | [FlowAlign with Wan2.2 TI2V-5B](#flowalign-wan22-2026-01-05) | Wan2.2 TI2V-5B | ✅ T2V模式成功 |
-| 2026-01-04 | [Baseline: 手链→项链](#baseline-2026-01-04) | WANAlign2.1 | ⚠️ 部分成功 |
+## 目录结构
 
----
-
-## Pillow Generalization (2026-01-05)
-
-### 实验目标
-
-验证 FlowEdit 方法在不同产品类型（家居类）上的泛化能力。
-
-### 实验配置
-
-| 配置项 | 值 |
-|--------|-----|
-| 输入视频 | `pillow_480p.mp4` (832×480, 49帧) |
-| 产品类型 | 家居-枕套（vs 之前的首饰-手链） |
-| Source Prompt | A decorative pillow cover with winter ski gear pattern... |
-| Target Prompt | A decorative pillow cover with tropical beach pattern... |
-| 方法 | FlowEdit (Wan2.1 T2V-1.3B) |
-
-### 结果
-
-| 评估项 | 结果 | 说明 |
-|--------|------|------|
-| 编辑效果 | ✅ 成功 | 图案风格有变化 |
-| 背景保持 | ✅ 成功 | 枕套形状/布料保持 |
-| 时序一致性 | ✅ 良好 | 无明显闪烁 |
-
-### 输出文件
-
-- 输入：`results/pillow_480p.mp4`
-- 输出：`results/flowedit-wan2.1/pillow_flowedit.mp4`
-- 对比：`results/pillow_comparison.mp4`
-
-### 结论
-
-FlowEdit 方法在家居类产品（枕套）上同样有效，验证了方法的泛化能力。
-
----
-
-## 4-Way Comparison (2026-01-05)
-
-### 实验目标
-
-对比 FlowEdit 和 FlowAlign 两种方法，以及 Wan2.1 和 Wan2.2 两种模型的效果。
-
-### 实验配置
-
-| 配置项 | 值 |
-|--------|-----|
-| 输入视频 | `bracelet_shot1_480p.mp4` (832×480, 49帧) |
-| Source Prompt | Two personalized couple bracelets... |
-| Target Prompt | A gold charm necklace... |
-| strength | 0.7 |
-| steps | 50 |
-
-### 方法参数对比
-
-| 参数 | FlowEdit | FlowAlign |
-|------|----------|-----------|
-| guidance_scale | 13.5 (target) + 5.0 (source) | 19.5 |
-| zeta_scale | - | 0.001 |
-| 批处理 | 4样本 (src/tar × uncond/cond) | 3样本 (src, tar+src, tar+tar) |
-| 公式 | `Zt += dt * (Vt_tar - Vt_src)` | `Zt += dt * (vp - vq) + zeta * (...)` |
-
-### 模型参数对比
-
-| 参数 | Wan2.1 (flowedit-wan) | Wan2.2 (我们的实现) |
-|------|----------------------|---------------------|
-| 模型 | T2V-1.3B | TI2V-5B (T2V模式) |
-| z_dim | 16 | 48 |
-| shift | 3.0 | 3.0 |
-| 输出帧数 | 49 | 49 |
-| 输出分辨率 | 832×480 | 832×480 |
-
-### 对比结果
-
-| 实验 | 输出文件 |
-|------|----------|
-| Wan2.1 + FlowEdit | `results/flowedit-wan2.1/wan21_flowedit.mp4` |
-| Wan2.1 + FlowAlign | `results/flowedit-wan2.1/wan21_flowalign.mp4` |
-| Wan2.2 + FlowEdit | `results/flowedit-wan2.2/wan22_flowedit_480p.mp4` |
-| Wan2.2 + FlowAlign | `results/flowedit-wan2.2/wan22_flowalign_480p.mp4` |
-
-### 观察结论
-
-需要人工评估以下维度：
-1. **编辑效果**：手链是否被替换为项链
-2. **背景保持**：紫色丝绸背景是否保持
-3. **时序一致性**：产品是否有闪烁/抖动
-4. **产品细节**：项链细节是否清晰
-
----
-
-## FlowAlign with Wan2.2 TI2V-5B (2026-01-05)
-
-### 实验目标
-
-将FlowAlign从Wan2.1迁移到Wan2.2 TI2V-5B，验证算法兼容性，并尝试添加图像条件支持。
-
-### 实验过程
-
-#### 1. 尝试Wan2.1 I2V-14B（失败）
-
-- **问题**：架构不兼容，I2V模型使用CLIP image encoder，与T2V的text-only架构不同
-- **结论**：无法直接将FlowAlign应用于I2V模型
-
-#### 2. 尝试Wan2.2 TI2V-5B + diffusers（失败）
-
-- **问题**：OOM错误，diffusers的CPU offload机制与手动VAE操作冲突
-- **结论**：需要使用官方Wan2.2代码而非diffusers wrapper
-
-#### 3. 使用官方Wan2.2代码实现FlowAlign（成功）
-
-创建 `wan2.2-official/flowalign_t2v.py`，关键发现：
-
-| 对比项 | flowedit-wan (Wan2.1) | 我们的实现 (Wan2.2) |
-|--------|----------------------|---------------------|
-| 模型 | T2V-14B (z_dim=16) | TI2V-5B (z_dim=48) |
-| shift | 3.0 | 3.0 (需要与diffusers一致) |
-| 噪声策略 | 每步新噪声 | 每步新噪声 (固定噪声效果差) |
-
-### 关键发现
-
-1. **shift参数很重要**
-   - Wan2.2官方默认shift=5.0，但FlowAlign需要shift=3.0（与diffusers一致）
-   - shift=5.0时编辑效果差，shift=3.0显著改善
-
-2. **每步新噪声更好**
-   - 固定噪声：背景保持差
-   - 每步新噪声：随机性提供正则化效果，背景保持更好
-
-3. **TI2V的expand_timesteps模式**
-   - TI2V使用per-frame timestep：第一帧t=0（固定），其他帧t=t
-   - 这可能与FlowAlign的假设冲突，T2V模式更稳定
-
-4. **velocity差异太小的问题**
-   - 当source/target prompt语义接近时，velocity差异很小
-   - 需要足够的guidance_scale (19.5) 来放大差异
-
-### 最终参数配置
-
-```python
-# flowalign_t2v.py 默认参数
-shift = 3.0              # 与diffusers一致
-strength = 0.7           # 编辑强度
-guidance_scale = 19.5    # CFG scale
-zeta_scale = 0.001       # 结构保持
-steps = 50               # 采样步数
+```
+experiments/
+├── README.md                    # 本文件
+├── results/                     # 实验结果（视频、图片等）
+│   ├── flowalign-wan2.1/       # FlowAlign (Wan2.1) 基线结果
+│   │   ├── test01_flowalign_watch_to_bracelet.mp4
+│   │   ├── test02_flowalign_tray_to_flowers.mp4
+│   │   └── ...
+│   ├── flowedit-wan2.1/        # FlowEdit (Wan2.1) 基线结果
+│   └── our-method/             # 我们的方法实验结果
+├── configs/                     # 实验配置（自动生成）
+│   └── flowalign-wan2.1/
+│       ├── test01.yaml
+│       └── ...
+├── logs/                        # 实验日志
+│   └── flowalign-wan2.1/
+│       ├── test01.log
+│       └── ...
+└── analysis/                    # 实验分析、对比报告
+    ├── baseline-comparison.md
+    └── metrics/
+        └── flowalign-results.csv
 ```
 
-### 运行方法
+## 组织原则
 
-```bash
-cd baseline/flowedit-wan2.2
+1. **按方法分类** - 每个方法（baseline或我们的方法）有独立子目录
+2. **统一命名** - 实验结果文件名包含方法名和转换任务
+3. **版本管理** - 重要结果提交到 git，大文件用 git-lfs
+4. **可追溯** - 保留配置文件和日志，方便复现
 
-python flowalign_t2v.py \
-  --ckpt_dir ./Wan2.2-TI2V-5B \
-  --video input.mp4 \
-  --source_prompt "description of source" \
-  --target_prompt "description of target" \
-  --output output.mp4
-```
+## 命名规范
 
-### 输出文件
+### 结果视频
+格式：`{test_id}_{method}_{source}_to_{target}.mp4`
 
-- `baseline/flowedit-wan2.2/results/flowalign_t2v_shift3.mp4` - 最佳结果（shift=3.0）
-- `baseline/flowedit-wan2.2/results/ti2v_necklace_normal.mp4` - 正常TI2V生成（验证模型正常）
+示例：
+- `test01_flowalign_watch_to_bracelet.mp4`
+- `test02_our_method_tray_to_flowers.mp4`
 
-### 待解决问题
+### 实验日志
+格式：`{test_id}_{method}_{timestamp}.log`
 
-1. **TI2V图像条件**：expand_timesteps模式下如何正确注入target image condition
-2. **编辑强度**：prompt语义接近时编辑效果有限
-3. **模型差异**：TI2V-5B对prompt敏感度可能不如纯T2V模型
+示例：
+- `test01_flowalign_20260107_161800.log`
 
----
+## 当前实验
 
-## Baseline (2026-01-04)
+### FlowAlign-Wan2.1 基线
 
-### 实验配置
+| 测试ID | 类别 | 转换 | 状态 | 结果文件 |
+|--------|------|------|------|---------|
+| test01 | Jewelry | Watch → Bracelet | ✅ | test01_flowalign_watch_to_bracelet.mp4 |
+| test02 | Home | Tray → Flowers | ✅ | test02_flowalign_tray_to_flowers.mp4 |
+| test03 | Toys | Stacker → Toy | ✅ | test03_flowalign_stacker_to_ridetoy.mp4 |
+| test04 | Clothing | Socks → Skirt | ✅ | test04_flowalign_socks_to_skirt.mp4 |
 
-| 项目 | 值 |
-|------|-----|
-| 输入视频 | `results/bracelet_shot1_480p.mp4` (832×480, 49帧, 3s) |
-| Source Prompt | Two personalized couple bracelets, one silver and one black, placed on a purple silk fabric with decorative stones. |
-| Target Prompt | A gold charm necklace with colorful gemstone pendants placed on a purple silk fabric with decorative stones. |
-| 方法 | WANAlign2.1 (FlowAlign + WAN2.1-1.3B) |
-| 参数 | strength=0.7, target_guidance_scale=19.5, flag_attnmask=True, zeta_scale=1e-3 |
-| GPU | RTX 5090 32GB |
+**参数设置：**
+- Model: Wan-AI/Wan2.1-T2V-1.3B-Diffusers
+- Frames: 49 (固定取前49帧)
+- Resolution: 480p (832x480 或 480x832)
+- Steps: 50
+- Strength: 0.7
+- Guidance Scale: 19.5
+- Attention Masking: Layers 11-17
 
-### 评估结果
+## 添加新实验
 
-| 评估项 | 结果 | 说明 |
-|--------|------|------|
-| 产品替换 | ✅ 成功 | 手链被替换为项链 |
-| 背景保持 | ✅ 成功 | 紫色丝绸背景保持完整 |
-| 时序一致性 | ⚠️ 有轻微问题 | 产品有轻微闪烁和抖动 |
-| 产品细节 | ⚠️ 清晰度不佳 | 项链细节模糊，宝石不够清晰 |
+1. 在 `baseline/flowedit-wan2.1/run_experiments.py` 中添加实验配置
+2. 运行实验：`python run_experiments.py --experiments new_test`
+3. 结果自动保存到 `experiments/results/{method}/`
+4. 更新本文档的实验记录表
 
-### 结论
+## 实验分析
 
-Baseline 验证了预期：
-1. ✅ Training-Free 方法可以完成基本的产品替换
-2. ✅ 背景保持能力较好
-3. ⚠️ **时序一致性**是核心问题 → PVTT 需要解决
-4. ⚠️ **产品细节保真度**不足 → PVTT 需要解决
-
-### 输出文件
-
-- 输入：`results/bracelet_shot1_480p.mp4`
-- 输出：`results/flowedit-wan2.1/flowalign_bracelet_to_necklace.mp4`
-
----
-
-## 环境配置
-
-### 5090 机器
-
-```bash
-# 使用已有的 wan conda 环境
-~/.conda/envs/wan/bin/python
-
-# 或安装依赖
-pip install torch torchvision torchaudio
-pip install omegaconf imageio imageio-ffmpeg matplotlib ftfy
-pip install transformers==4.51.3
-
-# 安装 custom diffusers
-cd baseline/flowedit-wan2.1/diffusers
-pip install -e .
-```
-
-### 运行实验
-
-```bash
-export HF_ENDPOINT=https://hf-mirror.com
-cd baseline/flowedit-wan2.1
-python awesome_wan_editing.py --config=./config/pvtt/bracelet_to_necklace.yaml
-```
+### 下一步计划
+- [ ] 完成更多样本对的测试
+- [ ] 对比 FlowAlign vs FlowEdit
+- [ ] 计算定量指标（CLIP-score, FVD等）
+- [ ] 用户研究评估
+- [ ] 实现我们的改进方法

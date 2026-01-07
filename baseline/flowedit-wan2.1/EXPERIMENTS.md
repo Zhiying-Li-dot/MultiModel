@@ -93,21 +93,29 @@ DEFAULT_INFERENCE_PARAMS = {
 
 ```
 pvtt/
-├── baseline/flowedit-wan2.1/
+├── baseline/flowedit-wan2.1/   # 基线方法代码
 │   ├── run_experiments.py      # 实验管理脚本
 │   ├── awesome_wan_editing.py  # 主程序
-│   ├── config/pvtt/            # 自动生成的配置文件
-│   │   ├── test01_watch_to_bracelet.yaml
-│   │   ├── test02_tray_to_flowers.yaml
-│   │   └── ...
-│   └── results/pvtt/           # 输出视频
-│       ├── test01_flowalign_watch_to_bracelet.mp4
+│   └── config/pvtt/            # 自动生成的配置文件
+│       ├── test01_watch_to_bracelet.yaml
+│       ├── test02_tray_to_flowers.yaml
 │       └── ...
+├── experiments/                # 实验结果（统一管理）
+│   └── results/
+│       └── flowalign-wan2.1/   # FlowAlign 实验结果
+│           ├── test01_flowalign_watch_to_bracelet.mp4
+│           ├── test02_flowalign_tray_to_flowers.mp4
+│           └── ...
 └── data/pvtt-benchmark/videos/ # 输入视频
     ├── jewelry/JEWE001.mp4
     ├── home/HOME002.mp4
     └── ...
 ```
+
+**目录说明：**
+- `baseline/` - 只包含基线方法的代码
+- `experiments/` - 统一存放所有实验结果、记录、分析
+- `data/` - 原始数据集
 
 ## 添加新实验
 
@@ -150,7 +158,7 @@ Experiment Results Summary
 ✓ SUCCESS    test04_socks_to_skirt
 ```
 
-结果视频在 `results/pvtt/` 目录。
+结果视频在项目根目录的 `experiments/results/flowalign-wan2.1/` 目录。
 
 ## 远程运行
 
@@ -183,6 +191,12 @@ A: 使用 `--sequential` 顺序运行，或检查是否有僵尸进程占用GPU�
 A: 脚本会打印最后500字符的输出。完整日志可重定向：
 ```bash
 python run_experiments.py 2>&1 | tee experiment.log
+```
+
+### Q: 如何自定义结果保存位置？
+A: 使用 `--results-dir` 参数：
+```bash
+python run_experiments.py --results-dir /path/to/custom/results
 ```
 
 ## 优势

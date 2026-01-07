@@ -46,6 +46,12 @@ data/products/*.jpg
 *.pt
 *.safetensors
 
+# Experiment results (videos are large)
+experiments/results/**/*.mp4
+experiments/results/**/*.avi
+experiments/logs/
+baseline/**/results/
+
 # Logs
 logs/
 *.log
