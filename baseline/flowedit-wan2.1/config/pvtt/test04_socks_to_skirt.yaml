@@ -2,7 +2,7 @@
 # Clothing category - Hand knitted wool socks to midi wool plaid skirt
 
 video:
-    video_path: ../../../data/pvtt-benchmark/videos/clothing/CLOT001.mp4
+    video_path: ../../data/pvtt-benchmark/videos/clothing/CLOT001.mp4
     source_prompt: Hand knitted wool socks, extra thick warm winter socks in neutral colors displayed on a clean background.
     target_prompt: Midi wool plaid skirt, high waisted retro tartan swing skirt in autumn colors displayed elegantly.
     source_blend: wool socks

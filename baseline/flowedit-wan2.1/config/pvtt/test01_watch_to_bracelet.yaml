@@ -2,7 +2,7 @@
 # Jewelry category - Personalized wood watch to engraved bracelet
 
 video:
-    video_path: ../../../data/pvtt-benchmark/videos/jewelry/JEWE001.mp4
+    video_path: ../../data/pvtt-benchmark/videos/jewelry/JEWE001.mp4
     source_prompt: A personalized ebony wood watch with engraved details, elegant men's wrist watch displayed on a white background.
     target_prompt: A personalized engraved bar bracelet with curved nameplate, elegant slider bracelet displayed on a white background.
     source_blend: watch

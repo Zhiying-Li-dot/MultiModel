@@ -2,7 +2,7 @@
 # Home category - Molded leather catchall to dried hydrangeas
 
 video:
-    video_path: ../../../data/pvtt-benchmark/videos/home/HOME002.mp4
+    video_path: ../../data/pvtt-benchmark/videos/home/HOME002.mp4
     source_prompt: A molded leather catchall tray in vibrant colors, modern valet dish for jewelry and accessories on a white surface.
     target_prompt: Fall vintage dried look hydrangeas in dusty pink, orange and brown autumn colors arranged as decorative centerpiece.
     source_blend: leather tray
