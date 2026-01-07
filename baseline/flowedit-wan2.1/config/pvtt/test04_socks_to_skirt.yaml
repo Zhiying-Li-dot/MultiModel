@@ -1,0 +1,30 @@
+# PVTT Test 04: Wool Socks to Plaid Skirt
+# Clothing category - Hand knitted wool socks to midi wool plaid skirt
+
+video:
+    video_path: ../../../data/pvtt-benchmark/videos/clothing/CLOT001.mp4
+    source_prompt: Hand knitted wool socks, extra thick warm winter socks in neutral colors displayed on a clean background.
+    target_prompt: Midi wool plaid skirt, high waisted retro tartan swing skirt in autumn colors displayed elegantly.
+    source_blend: wool socks
+    target_blend: plaid skirt
+
+infernece:
+    num_inference_step: 50
+
+training-free-type:
+    flag_flowedit: False
+    flag_flowalign: True
+
+flowedit:
+    strength: 0.7
+    target_guidance_scale: 13.5
+    source_guidance_scale: 5.0
+    save_video: ./results/pvtt/test04_flowedit_socks_to_skirt.mp4
+
+flowalign:
+    strength: 0.7
+    target_guidance_scale: 19.5
+    flag_attnmask: True
+    zeta_scale: 1e-3
+    bg_zeta_scale: 1e-3
+    save_video: ./results/pvtt/test04_flowalign_socks_to_skirt.mp4
