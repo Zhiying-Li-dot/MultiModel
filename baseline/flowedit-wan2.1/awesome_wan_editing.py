@@ -2,6 +2,11 @@
 import os
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
+# Ensure CUDA_VISIBLE_DEVICES is set before importing torch
+import sys
+if len(sys.argv) > 1:
+    print(f"[CUDA] CUDA_VISIBLE_DEVICES = {os.environ.get('CUDA_VISIBLE_DEVICES', 'not set')}")
+
 import torch
 import imageio
 import requests
