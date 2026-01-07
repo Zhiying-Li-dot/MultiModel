@@ -629,9 +629,9 @@ value = torch.cat([value, V_ref * ref_strength], dim=1)
    [I2V-Adapter: A General Image-to-Video Adapter](https://arxiv.org/abs/2312.16693)
    - Cross-frame attention (需要训练)
 
-5. **FlowAlign (arXiv 2024)**
-   [Training-Free Consistent Text-to-Image Generation](https://arxiv.org/abs/2405.23145)
-   - 我们的 baseline 方法
+5. **FlowAlign (arXiv 2025)**
+   [FlowAlign: Trajectory-Regularized, Inversion-Free Flow-based Image Editing](https://arxiv.org/abs/2505.23145)
+   - 我们的 baseline 方法（基于 FlowEdit + zeta regularization）
 
 ---
 
