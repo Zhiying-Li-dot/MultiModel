@@ -60,3 +60,6 @@ Thumbs.db
 tmp/
 temp/
 *.tmp
+
+# Browser automation
+.browser_data/
