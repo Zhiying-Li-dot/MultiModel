@@ -1,13 +1,16 @@
 """
 Reference Self-Attention utilities for PVTT baseline.
 
-Based on RefDrop (NeurIPS 2024) method, adapted for clean reference images.
+Based on RefDrop (NeurIPS 2024) method, adapted for reference images.
 
-PVTT Adaptation:
-- RefDrop 原文假设 reference 是生成的图片（参与 denoising）
-- 我们的适配：使用真实产品图片的 clean features (t=0)
-- 预提取 K_ref, V_ref，所有 denoising step 复用
-- 借鉴 ControlNet 的成功经验
+Two modes:
+1. Clean RefDrop (original): Extract features at t=0, reuse for all steps
+   - Problem: Feature distribution mismatch at high noise levels
+
+2. Noisy RefDrop (new): Add noise to reference matching current timestep
+   - Each step: noisy_ref = add_noise(clean_ref, t)
+   - Extract K_ref, V_ref from noisy_ref
+   - Features match the noise level of current denoising step
 """
 import torch
 import torch.nn as nn
@@ -195,5 +198,163 @@ def extract_clean_reference_features(
             sample_name = list(ref_bank.keys())[0]
             sample_k = ref_bank[sample_name]["key"]
             print(f"[Clean RefDrop] Sample layer '{sample_name}' K shape: {sample_k.shape}")
+
+    return ref_bank
+
+
+def prepare_reference_latent(
+    product_image: Image.Image,
+    vae,
+    text_encoder,
+    tokenizer,
+    ref_prompt: str,
+    target_size: tuple = (480, 832),
+    device: str = "cuda",
+) -> Dict[str, torch.Tensor]:
+    """
+    Prepare reference latent and prompt embeddings for Noisy RefDrop.
+
+    Unlike extract_clean_reference_features, this only encodes the image
+    to latent space. Feature extraction happens dynamically at each timestep.
+
+    Args:
+        product_image: Real product image (PIL Image)
+        vae: VAE model for encoding
+        text_encoder: T5 text encoder
+        tokenizer: T5 tokenizer
+        ref_prompt: Text prompt for reference
+        target_size: (height, width) for resizing image
+        device: Device to run on
+
+    Returns:
+        dict with:
+            - ref_latent: [1, 16, 1, H', W'] clean latent
+            - prompt_embeds: [1, seq_len, dim] text embeddings
+    """
+    print("[Noisy RefDrop] Preparing reference latent...")
+
+    # Preprocess and encode image to latent
+    ref_tensor = preprocess_image(product_image, target_size)
+    ref_tensor = ref_tensor.unsqueeze(0).unsqueeze(2).to(device)  # [1, 3, 1, H, W]
+
+    with torch.no_grad():
+        # Encode to latent space
+        ref_latent = vae.encode(ref_tensor).latent_dist.sample()
+        print(f"[Noisy RefDrop] Reference latent shape: {ref_latent.shape}")
+
+        # Encode reference prompt
+        prompt_embeds = text_encoder(
+            tokenizer(
+                ref_prompt,
+                padding="max_length",
+                max_length=512,
+                truncation=True,
+                return_tensors="pt"
+            ).input_ids.to(device)
+        )[0]
+
+    return {
+        "ref_latent": ref_latent,
+        "prompt_embeds": prompt_embeds,
+    }
+
+
+def extract_noisy_reference_features(
+    ref_latent: torch.Tensor,
+    prompt_embeds: torch.Tensor,
+    transformer,
+    scheduler,
+    timestep: torch.Tensor,
+    device: str = "cuda",
+) -> Dict[str, Dict[str, torch.Tensor]]:
+    """
+    Extract reference features from noisy latent at given timestep.
+
+    This is called once per denoising step to get features matching
+    the current noise level.
+
+    Args:
+        ref_latent: Clean reference latent [1, 16, 1, H', W']
+        prompt_embeds: Text embeddings [1, seq_len, dim]
+        transformer: Transformer model
+        scheduler: Noise scheduler (for adding noise)
+        timestep: Current denoising timestep
+        device: Device
+
+    Returns:
+        ref_bank: {layer_name: {"key": K_ref, "value": V_ref}}
+    """
+    with torch.no_grad():
+        # Add noise to reference latent matching current timestep
+        noise = torch.randn_like(ref_latent)
+
+        # Ensure timestep is 1-d tensor (scheduler expects iterable)
+        if not isinstance(timestep, torch.Tensor):
+            timestep = torch.tensor([timestep], device=device)
+        elif timestep.dim() == 0:
+            timestep = timestep.unsqueeze(0)
+
+        # Add noise using scheduler
+        noisy_ref = scheduler.add_noise(ref_latent, noise, timestep)
+
+        # Prepare feature extraction with hooks
+        ref_bank = {}
+        hooks = []
+
+        def make_hook(layer_name):
+            def hook_fn(module, args, kwargs, output):
+                hidden_states = None
+                encoder_hidden_states = None
+
+                if len(args) > 0:
+                    hidden_states = args[0]
+                    if len(args) > 1:
+                        encoder_hidden_states = args[1]
+                elif kwargs:
+                    hidden_states = kwargs.get('hidden_states', None)
+                    encoder_hidden_states = kwargs.get('encoder_hidden_states', None)
+
+                if hidden_states is not None:
+                    is_self_attn = encoder_hidden_states is None
+                    if is_self_attn:
+                        try:
+                            K_ref = module.to_k(hidden_states)
+                            V_ref = module.to_v(hidden_states)
+                            ref_bank[layer_name] = {
+                                "key": K_ref.detach().clone(),
+                                "value": V_ref.detach().clone()
+                            }
+                        except AttributeError:
+                            pass
+            return hook_fn
+
+        # Register hooks
+        for name, module in transformer.named_modules():
+            if hasattr(module, 'to_q') and hasattr(module, 'to_k') and hasattr(module, 'to_v'):
+                hook = module.register_forward_hook(make_hook(name), with_kwargs=True)
+                hooks.append(hook)
+
+        # Convert to transformer's dtype
+        noisy_ref = noisy_ref.to(transformer.dtype)
+        prompt_embeds_t = prompt_embeds.to(transformer.dtype)
+
+        # Temporarily use basic attention processor
+        from .wan_attention import register_attention_processor
+        register_attention_processor(transformer, processor_type="WanAttnProcessor2_0")
+
+        # Forward through transformer at current timestep
+        try:
+            _ = transformer(
+                noisy_ref,
+                encoder_hidden_states=prompt_embeds_t,
+                timestep=timestep.to(transformer.dtype),
+                return_dict=False
+            )
+        except Exception as e:
+            print(f"[Noisy RefDrop] Warning: Forward pass error: {e}")
+
+        # Remove hooks
+        for hook in hooks:
+            hook.remove()
 
     return ref_bank

@@ -15,7 +15,7 @@ from diffusers.schedulers.scheduling_unipc_multistep import UniPCMultistepSchedu
 from transformers import CLIPVisionModel, CLIPImageProcessor
 
 from utils.wan_attention import register_attention_processor
-from utils.reference_utils import extract_clean_reference_features
+from utils.reference_utils import extract_clean_reference_features, prepare_reference_latent
 
 # 1) load video
 # helper function to load videos
@@ -341,35 +341,75 @@ if __name__ == '__main__':
 
         # Check if using Reference Self-Attention
         use_reference_attention = config['flowedit'].get('use_reference_attention', False)
+        use_noisy_refdrop = config['flowedit'].get('noisy_refdrop', False)  # NEW: noisy mode
 
         if use_reference_attention and target_image is not None:
-            # Use Clean Reference Attention (RefDrop PVTT Adaptation)
-            print("[Clean RefDrop] Starting reference attention setup for FlowEdit...")
-
             # Get reference parameters from config
-            ref_c = config['flowedit'].get('ref_c', 0.2)  # Default 0.2 (RefDrop video recommendation)
+            ref_c = config['flowedit'].get('ref_c', 0.2)
 
-            # Extract clean reference features (at t=0)
-            ref_bank = extract_clean_reference_features(
-                product_image=target_image,
-                vae=pipe.vae,
-                transformer=pipe.transformer,
-                text_encoder=pipe.text_encoder,
-                tokenizer=pipe.tokenizer,
-                ref_prompt=target_prompt,  # Use target prompt as reference context
-                target_size=(480, 832),
-                device=pipe.device
-            )
+            if use_noisy_refdrop:
+                # NEW: Noisy RefDrop - pre-compute features for all timesteps
+                print("[Noisy RefDrop] Starting reference attention setup for FlowEdit...")
 
-            # Register Clean Reference Attention Processor
-            register_attention_processor(
-                pipe.transformer,
-                processor_type="CleanReferenceAttentionProcessor",
-                ref_bank=ref_bank,
-                c=ref_c
-            )
+                # Prepare reference latent
+                ref_data = prepare_reference_latent(
+                    product_image=target_image,
+                    vae=pipe.vae,
+                    text_encoder=pipe.text_encoder,
+                    tokenizer=pipe.tokenizer,
+                    ref_prompt=target_prompt,
+                    target_size=(480, 832),
+                    device=pipe.device
+                )
 
-            print(f"[Clean RefDrop] Registered for FlowEdit (c={ref_c})")
+                # Compute timesteps (same logic as FlowEdit pipeline)
+                pipe.scheduler.set_timesteps(num_inference_steps, device=pipe.device)
+                timesteps = pipe.scheduler.timesteps
+                # Apply strength to get actual timesteps used
+                init_timestep = min(int(num_inference_steps * strength), num_inference_steps)
+                t_start = max(num_inference_steps - init_timestep, 0)
+                timesteps = timesteps[t_start:]
+                print(f"[Noisy RefDrop] Timesteps: {len(timesteps)} steps, range [{timesteps[0].item()}, {timesteps[-1].item()}]")
+
+                # Register Noisy Reference Attention Processor with pre-computed features
+                register_attention_processor(
+                    pipe.transformer,
+                    processor_type="NoisyReferenceAttentionProcessor",
+                    ref_latent=ref_data["ref_latent"],
+                    prompt_embeds=ref_data["prompt_embeds"],
+                    transformer=pipe.transformer,
+                    scheduler=pipe.scheduler,
+                    timesteps=timesteps,
+                    c=ref_c
+                )
+
+                print(f"[Noisy RefDrop] Registered for FlowEdit (c={ref_c})")
+
+            else:
+                # Original: Clean RefDrop - fixed features from t=0
+                print("[Clean RefDrop] Starting reference attention setup for FlowEdit...")
+
+                # Extract clean reference features (at t=0)
+                ref_bank = extract_clean_reference_features(
+                    product_image=target_image,
+                    vae=pipe.vae,
+                    transformer=pipe.transformer,
+                    text_encoder=pipe.text_encoder,
+                    tokenizer=pipe.tokenizer,
+                    ref_prompt=target_prompt,
+                    target_size=(480, 832),
+                    device=pipe.device
+                )
+
+                # Register Clean Reference Attention Processor
+                register_attention_processor(
+                    pipe.transformer,
+                    processor_type="CleanReferenceAttentionProcessor",
+                    ref_bank=ref_bank,
+                    c=ref_c
+                )
+
+                print(f"[Clean RefDrop] Registered for FlowEdit (c={ref_c})")
 
         else:
             # Use default attention processor

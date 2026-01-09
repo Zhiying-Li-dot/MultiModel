@@ -162,14 +162,43 @@ flowedit:
     # target_prompt 必须与参考图内容匹配！
 ```
 
+### 第三轮实验：Noisy RefDrop vs Clean RefDrop
+
+**假设**：Clean RefDrop 在 t=0 提取特征，可能与高噪声 timestep 的视频特征分布不匹配。
+
+**Noisy RefDrop 方法**：
+- 每个 denoising step，给参考图 latent 添加与当前 timestep 匹配的噪声
+- 从 noisy reference 提取 K_ref, V_ref
+- 特征分布与当前视频特征匹配
+
+**实现**：
+- 分支：`feature/noisy-refdrop`
+- 预计算所有 timestep 的 reference features（存储在 CPU，使用时移到 GPU）
+- 通过 hook 追踪当前 timestep
+
+| 方法 | c 值 | 珍珠效果 | 结果文件 |
+|------|------|---------|---------|
+| Clean RefDrop | 0.05 | ✅ 有珍珠 | test02_flowedit_pearl_c0.05.mp4 |
+| Noisy RefDrop | 0.2 | ❌ 无珍珠 | test02_noisy_refdrop_c0.2.mp4 |
+| Noisy RefDrop | 0.05 | ✅ 有珍珠 | test02_noisy_refdrop_c0.05.mp4 |
+
+**对比视频**: `test02_clean_vs_noisy_comparison.avi` (Source | Target | Clean | Noisy)
+
+**结论**：
+- Noisy RefDrop 效果与 Clean RefDrop 基本相同，没有显著提升
+- c=0.05 两种方法都能看到珍珠，c=0.2 都无法保持编辑效果
+- **假设不成立**：feature distribution mismatch 不是主要问题
+- 问题可能在于 self-attention 注入方式本身与 FlowEdit 机制冲突
+
 ### 下一步
 
 - [x] 给 FlowEdit 添加 RefDrop 支持
 - [x] 尝试更小的 c 值（0.05, 0.1）
+- [x] 尝试 Noisy RefDrop（结果：无显著提升）
 - [ ] 在更多样本上验证 c=0.05 的效果
 - [ ] 考虑自适应 c 值（不同层/timestep 使用不同 c）
 - [ ] 考虑替代方案：注入 cross-attention 而非 self-attention
-- [ ] 研究如何让参考图特征更好地与视频特征对齐
+- [ ] 研究 IP-Adapter / ControlNet 等其他图像条件方法
 
 ## 实验分析
 
