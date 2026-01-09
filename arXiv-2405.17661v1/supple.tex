@@ -1,0 +1,360 @@
+
+\newpage
+\appendix
+
+
+
+
+
+\section{Broader impacts}\label{sec:impacts}
+
+The broader impacts of advancements in consistent character generation and personalized video generation extend across multiple domains, notably enhancing both creative and technological landscapes. In the media and entertainment industries, for instance, these methods can revolutionize character design, fostering more reliable representations. However, there is also a potential risk associated with our method, as it could be used to create fake profiles, highlighting the need for careful consideration of its applications.
+
+
+\section{Relationship to Concatenated attention}\label{sec:relation_concat}
+\begin{wrapfigure}[12]{r}{0.3\textwidth} %
+\vspace{-1.3cm}
+\centering
+      \begin{subfigure}{0.12\textwidth}
+    \centering
+    \includegraphics[width=1\linewidth , align = c]{images/bear.jpg}
+    \caption*{Eq. \eqref{eq:matrix_coeff}-\eqref{eq:vector_coeff}}
+  \end{subfigure} 
+  \begin{subfigure}{0.15\textwidth}
+    \centering
+\includegraphics[width=1\linewidth, align = c]{images/bear.pdf}
+\caption*{Concat attn~\eqref{eq:concat}}
+  \end{subfigure}    
+    \caption{Concatenated attention is our special case.
+    }  \label{fig:concat_euiv}
+\end{wrapfigure} 
+In this section, we delve into details on how our \rma~framework can replicate the concatenated attention in \eqref{eq:concat}. We begin by noting the dimensions of the attention maps:
+
+\begin{align}
+    \text{Softmax}\left(\frac{Q_i K_1^\top}{\sqrt{d}}\right) & \in \mathbb{R}^{L \times L}, \\
+    \text{Softmax}\left(\frac{Q_i K_i^\top}{\sqrt{d}}\right) & \in \mathbb{R}^{L \times L}, \\
+    \text{Softmax}\left(\frac{Q_i [K_1; K_i]^\top}{\sqrt{d}}\right) & \in \mathbb{R}^{L \times 2L},
+\end{align}
+where \(L\) is the sequence length of the input hidden feature \(X\). 
+We further define $\mathbf{1}_d$ as an all-ones vector of dimension $d$, and $\mathbf{1}$ as an all-ones matrix, sized appropriately to ensure the validity of the operations it is involved in.
+To recover concatenated attention \eqref{eq:concat}, we extend the scalar \(c\) from \eqref{eq:rma} to a rank-1 weight matrix:
+\begin{align}\label{eq:matrix_coeff}
+C = \mathbf{c} \otimes \mathbf{1}_{d_v},
+\end{align}
+where all columns in \(C  \in \mR^{L \times d_v} \) are identical, represented by the vector \(\mathbf{c} \in \mR^{d_v} \), and \(d_v\) is the feature dimension of the value \(V\). We then transform the scalar dot product into a matrix element-wise product $\odot$, allowing \rma~to be expressed with this matrix coefficient as:
+\begin{align}\label{eq:matrix_rma}
+X_{\rma}' = 
+C \odot \left( \text{Softmax}\left(\frac{Q_i K_1^\top}{\sqrt{d}}\right) V_1 \right)  +  (\mathbf{1} - C) \odot \left( \text{Softmax}\left(\frac{Q_i K_i^\top}{\sqrt{d}}\right) V_i \right).
+\end{align}
+
+Denote \(./\) and $\exp$ as the element-wise division and exponential operation respectively. By setting
+\begin{align}\label{eq:vector_coeff}
+    \mathbf{c} = \left({\exp}\left(\frac{Q_i K_1^\top}{\sqrt{d}}\right) \mathbf{1}_L \right) ./ \left({\exp}\left(\frac{Q_i [K_1; K_i]^\top}{\sqrt{d}}\right) \mathbf{1}_{2L}\right),
+\end{align}
+ \(X_{\rma}'\) can recover the concatenated attention~\citep{wu2023tune}
+\begin{equation}
+X_{\texttt{CAT}}' = \text{Softmax}\left(\frac{Q_i [K_1; K_i]^\top}{\sqrt{d}}\right) [V_1; V_i] = \text{Softmax}\left(\frac{ [Q_iK_1^\top; Q_iK_i^\top]}{\sqrt{d}}\right) [V_1; V_i]. 
+\end{equation}
+The reason for this to hold is simply the normalizing effect of softmax. The softmax operation would normalize each row in the attention map $\frac{Q_i [K_1; K_i]^\top}{\sqrt{d}}$ independently, thus our weight matrix is a rank-1 matrix with different rows.
+
+Finally, we can also recover the Cross-Frame attention~\citep{khachatryan2023text2video} by setting the coefficient $c=1$.
+
+
+
+
+
+\section{Additional results}
+
+\subsection{Quantitative results}\label{sec:quant}
+
+
+\paragraph{Text-to-Image generation} We present quantitative metrics in Figure \ref{fig:img_quant}. Using the OpenCLIP model, \texttt{CLIP-ViT-g-14-laion2B}, we measure text-image similarity by averaging CLIP scores~\citep{hessel2021clipscore} across 100 pairs of text prompts and generated images. This measurement is repeated five times using different pairs for each method, and the variability is depicted through error bars. For assessing subject consistency, we utilize DreamSim~\citep{fu2023dreamsim}, after processing images to remove backgrounds\footnote{We use the Tracer-B7 model in  \\
+\url{https://github.com/OPHoperHPO/image-background-remove-tool/?tab=readme-ov-file}} in order to focus analysis on foreground content. In tasks of diverse image generation, we employ LPIPS to gauge image diversity. We calculate the pairwise DreamSim or LPIPS distance between 400 image pairs per method, repeating these measurements with distinct pairs to ensure robust results, and report these findings with error bars. The measures of consistency and diversity are expressed as one minus the calculated DreamSim or LPIPS distances. These results demonstrate that our method is effectively situated on the Pareto-front, aligning with the human evaluations reported in Figure \ref{fig:human}.
+
+
+
+
+
+
+
+
+\begin{figure}[h]     
+	\centering
+      \begin{subfigure}{0.49\textwidth}
+    \centering
+    \includegraphics[width=1\linewidth , align = c]{images/consis_quant.pdf}
+  \end{subfigure} 
+  \begin{subfigure}{0.485\textwidth}
+    \centering
+\includegraphics[width=1\linewidth, align = c]{images/diverse_quant.pdf}
+  \end{subfigure}    
+    \caption{
+    Left: \textbf{Consistent Image Generation.} Our method achieves not only the highest subject consistency but also superior text alignment.
+Right: \textbf{Diverse Image Generation.} Our approach maintains higher subject diversity with only a slight compromise in text alignment. In contrast, IP-Adapter exhibits the highest subject diversity but suffers from a significant reduction in text alignment. Error bars represent standard deviation.
+    }  \label{fig:img_quant}
+\end{figure} 
+
+\paragraph{Image-to-Video generation} 
+We present a comparison of automatic metrics for video generation in \cref{tab:comparison_metrics}. All metrics are designed by EvalCrafter~\citep{liu2023evalcrafter}. Following EvalCrafter, we measure the quality of generated videos from four perspectives: overall quality, text alignment, temporal consistency, and motion quality.
+Specifically, VQA$_A$ measures the aesthetic score, and VQA$_T$ evaluates common distortions such as noise and artifacts. CLIP Score quantifies the similarity between input text prompts and generated videos. 
+For temporal consistency, we use CLIP-Temp to measure semantic consistency between frames, and also calculate face consistency, and warping errors. Finally, the flow score calculates the average optical flow across all video frames.
+We generated 220 personalized videos using 220 distinct prompts for both SVD and \ours, utilizing images of four individuals shown in \cref{fig:person_vid}. 
+The prompts included both close-up and distant descriptions. The metrics shown in \cref{tab:comparison_metrics} are averaged over these 220 videos. 
+The statistics demonstrate that \ours ~reduces unnecessary flickering and improves overall quality. Surprisingly, we find that \ours ~not only improves the visual quality but also the text alignment.
+
+
+
+
+\renewcommand{\arraystretch}{1.3}
+\begin{table}[h!]
+    \caption{
+ Comparison of automatic metrics between SVD and \ours ~on video generation. An $\uparrow$ symbol indicates that higher values are better, while a $\downarrow$ symbol indicates that lower values are preferable.
+ Our model shows improvements over the SVD base model in overall quality, text alignment, and temporal consistency. The flow score is the only metric where the SVD model scores higher, indicating more motion. However, the SVD model also exhibits greater jittering and flickering, as reflected in its larger warping error. Notably, a static video would register a flow score of zero. This suggests that our generated videos maintain a reasonable level of motion.
+    }
+    \label{tab:comparison_metrics}
+    \vspace{0.3cm}
+    \centering
+    \begin{tabular}{c|cc|c|ccc|c}       
+        \toprule
+         & \multicolumn{2}{c|}{\textbf{Overall quality}} & \textbf{Text alignment} & \multicolumn{3}{c|}{\textbf{Temporal Consistency}} & \textbf{Motion} \\ 
+        \hline         
+         & VQA$_A$ $\uparrow$ & VQA$_T$ $\uparrow$ & CLIP score $\uparrow$ 
+         & \begin{tabular}[c]{@{}c@{}}CLIP\\ Temp\end{tabular} $\uparrow $  & \begin{tabular}[c]{@{}c@{}}Face\\ consis.\end{tabular} $\uparrow $  & \begin{tabular}[c]{@{}c@{}}Warping\\ error\end{tabular} $\downarrow$  & \begin{tabular}[c]{@{}c@{}}Flow\\ score\end{tabular} $\uparrow$ \\ 
+        \hline
+        Ours & \textbf{94.27} & \textbf{89.91} & \textbf{20.84} 
+        & \textbf{99.91} & \textbf{99.46} & \textbf{0.0058} & 2.62  \\        
+        SVD & 93.25 & 86.20 
+        & 20.76 & 99.83 & 99.20 & 0.0077 & \textbf{5.80} \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+
+
+
+
+
+
+
+
+\subsection{Qualitative results}
+
+
+\textbf{Consistent and Diverse Image Generation:} We give more visualizations for consistent and diverse image generation in \cref{fig:consist_supple} and \cref{fig:diverse_supple}.
+We attached images their original quality in \url{consistent_generation.pdf} and \url{diverse_generation.pdf} in the supplementary material.
+
+ \textbf{Blend multiple images:} We show additional blended images using multiple reference images in \cref{fig:blend2}, 
+ \cref{fig:blend3}, and \cref{fig:blend_3reference}. In particular, \cref{fig:blend2}, \cref{fig:blend3} utilize two reference images, and \cref{fig:blend_3reference} blends three reference images.
+
+
+
+\textbf{Personalized Video Comparisons:}
+We show additional comparison in \cref{fig:person_vid2}. Moreover,
+we offer more than 20 original videos in $1024 \times 576$ resolution, accessible via this \href{https://refdrop-anonymouspaper-f37a6c745f264e0ff8b994669d71e9ca5f34d07a.gitlab.io/index.html}{anonymous external link}. On the linked page, the left column displays the video generations of SVD, while the right column features the enhanced SVD results by \ours.
+
+
+
+
+
+\section{Ablation Study}\label{sec:ablate}
+
+
+
+We provide some guidelines on the effect of the coefficient:
+\begin{itemize}
+    \item \textbf{Consistent Image Generation:} More challenging tasks typically require larger coefficients to ensure consistency. For example, generating human figures, which are more complex, requires coefficients between $[0.3, 0.4]$. In contrast, simpler subjects like fluffy toys or cartoon characters may only need a coefficient of $0.2$ to achieve consistent generation.
+    \item \textbf{Blend multiple images:} We find that the coefficients for each reference image, typically falling within the range of $[0.2, 0.4]$, perform effectively.
+    \item \textbf{Diverse Image Generation:} We recommend using a coefficient of $c=-0.3$. Lower strengths can impair visual quality and may introduce artifacts.
+    \item \textbf{Video Consistency:} The coefficient for video consistency requires more nuanced control; A coefficient of $0.2$ generally suffices, and a larger coefficient may make the video totally static. This sufficiency is likely due to the temporal attention component in VDM, which tends to amplify the effects introduced through self-attention.
+\end{itemize}
+
+
+
+
+The effect of reference strength on image generation is in \cref{fig:coeff}.
+
+
+
+
+
+
+
+
+
+
+
+\section{Additional implementation details}\label{sec:imple}
+
+
+All experiments were conducted on a single NVIDIA A100 GPU  with 80GB of memory. The generation process for a single image using SDXL requires approximately 5 seconds, whereas generating a video using SVD takes about 30 seconds. Additional details on hyper-parameters for both baseline methods and our approach are provided in \cref{tab:param}.
+
+\begin{table}[h!]
+    \caption{Base model and hyper-parameters.}
+    \label{tab:param}
+    \vspace{0.3cm}
+    \centering
+    \begin{tabular}{@{}c>{\raggedright}p{3cm}cccc@{}}
+        \toprule
+        & \textbf{Base model} & \textbf{CFG} & \textbf{\begin{tabular}[c]{@{}c@{}}Our reference\\ strength\end{tabular}} & \textbf{\begin{tabular}[c]{@{}c@{}}IP-Adapter\\ scale\end{tabular}} & \textbf{TLPFF} \\ 
+        \midrule
+        \cref{sec:consist} & Protovision-XL & 5 & 0.3$\sim$0.4 & 0.6 & N/A \\
+        \cref{sec:blend} & Protovision-XL & 5 & 0.2$\sim$0.4 & N/A & N/A \\
+        \cref{sec:diverse} & Protovision-XL & 5 & -0.3 & -0.6 & N/A \\
+        \cref{sec:consist_video} & SVD-img2vid-xt-1-1 & 2.5 & 0.2 & N/A & \begin{tabular}[c]{@{}c@{}}Gaussian filter\\ Stop frequency = 0.5\end{tabular} \\
+        \cref{sec:pv} & SVD-img2vid-xt-1-1 & 2.5 & 0.2 & N/A & N/A \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+
+
+ 
+
+
+
+
+
+
+
+
+\section{Human evaluation details}\label{sec:user_study}
+
+The Google Forms survey contains 5 sections, encompassing a total of 50 questions. Instructions and examples are detailed in attached screenshots for each section.
+
+\begin{enumerate}
+    \item \textbf{Visual Consistency in Consistent Image Generation}: Participants evaluate visual consistency across five images of the same subject, for example, ``Native American sailor'' produced by different methods,  Methods that maintain character consistency are scored 1; others receive a score of 0. Detailed instructions are provided in \cref{fig:h1}.
+    \item \textbf{Text Alignment in Consistent Image Generation}: Respondents assess the alignment of text with the corresponding image for each method, assigning a score from 1 to 3, where a higher score indicates better alignment. Detailed instructions are provided in \cref{fig:h3}.
+    \item \textbf{Visual Diversity in Diverse Image Generation}: Like the first section, participants rate the diversity in five images of the same subject across different methods. They assign a score from 1 to 3, with a higher score indicating greater diversity. Detailed instructions are provided in \cref{fig:h2}.
+    \item \textbf{Text Alignment in Diverse Image Generation}: This section mirrors Section 2 but in the context of diverse image generation. Participants rate text-image alignment on a scale from 1 to 3. Detailed instructions are provided in \cref{fig:h3}.
+    \item \textbf{Personalized Video Quality}: Participants evaluate the quality of videos generated with the same random seed by different methods. Methods that are chosen for higher quality receive a quality score of 1; others receive a score of 0. Detailed instructions are provided in \cref{fig:h4}.
+\end{enumerate}
+
+We aggregated scores from all sections and display the results in \cref{fig:human}. \textbf{In total, each participant provided 140 ratings, resulting in 6,160 ratings from 44 participants.}
+
+
+
+
+
+
+
+
+
+\section{Licenses}\label{sec:license}
+
+Pretrained models:
+\begin{itemize}
+    \item ProtoVision-XL\footnote{\url{https://huggingface.co/stablediffusionapi/protovision-xl-high-fidel}}~\citep{podell2023sdxl} CreativeML Open RAIL++-M License
+    \item Stable-Video-Diffusion-img2vid-xt-1-1\footnote{\url{https://huggingface.co/stabilityai/stable-video-diffusion-img2vid-xt-1-1}}~\citep{blattmann2023stable} CreativeML Open RAIL++-M License
+    \item BLIP Diffusion\footnote{\url{https://huggingface.co/salesforce/blipdiffusion}}~\citep{li2024blip} Apache 2.0 License   
+    \item IP-Adapter-SDXL\footnote{\url{https://huggingface.co/h94/IP-Adapter/blob/main/sdxl_models/ip-adapter_sdxl.bin}}~\citep{ye2023ipa} Apache 2.0 License   
+    \item InstantID\footnote{\url{https://huggingface.co/InstantX/InstantID}}~\citep{wang2024instantid} Apache 2.0 License       
+\end{itemize}
+
+Codebase:
+
+\begin{itemize}
+    \item diffusers 0.25.1 \footnote{\url{https://github.com/huggingface/diffusers}}~\citep{diffusers} Apache 2.0 License
+    \item EvalCrafter \footnote{\url{https://github.com/EvalCrafter/EvalCrafter}}~\citep{liu2023evalcrafter} No license found
+\end{itemize}
+
+Metric models:
+
+\begin{itemize}
+    \item OpenCLIP\footnote{\url{https://huggingface.co/laion/CLIP-ViT-g-14-laion2B-s12B-b42K}}~\citep{Radford2021LearningTV,ilharco_gabriel_2021_5143773} MIT License    
+    \item DreamSim\footnote{\url{https://dreamsim-nights.github.io/}}~\citep{fu2023dreamsim} MIT License  
+    \item LPIPS 1.0\footnote{\url{https://lightning.ai/docs/torchmetrics/stable/image/learned_perceptual_image_patch_similarity.html}}~\citep{zhang2018unreasonable} BSD-2-Clause license
+\end{itemize}
+
+
+
+\newpage
+\begin{figure}[h!]
+  \centering
+    \makebox[\linewidth]{\includegraphics[width=1\linewidth]{images/consistent_generation-1-compressed.pdf}}
+  \caption{More consistent image generation comparison.
+  We observe that our \rma ~tends to produce generated individuals with similar poses in certain instances. To mitigate this issue, we can adopt strategies such as "using vanilla query features" and "self-attention dropout," as suggested by \citet{tewel2024training}.
+  }
+  \label{fig:consist_supple}
+\end{figure}
+
+\begin{figure}[h!]
+  \centering
+    \makebox[\linewidth]{\includegraphics[width=1\linewidth]{images/diverse_generation-compressed.pdf}}
+  \caption{More diverse image generation comparison.}
+  \label{fig:diverse_supple}
+\end{figure}
+
+
+\begin{figure}[h!]
+  \centering
+    \makebox[\linewidth]{\includegraphics[width=1\linewidth]{images/dog_cat1.pdf}}
+  \caption{Blending a dog and a cat in various activities: \ours ~successfully combines features from two reference images and closely follows the text prompt, whereas SDXL struggles to generate a single cohesive object even with the guidance from the text prompt.
+  }
+  \label{fig:blend2}
+\end{figure}
+
+\begin{figure}[h!]
+  \centering
+    \makebox[\linewidth]{\includegraphics[width=1\linewidth]{images/dog2.pdf}}
+  \caption{More visualizations for blending two distinct animals. 
+  One crucial strategy for our method to effectively blend two objects is to avoid explicitly naming them in the text prompt. We have discovered that using a generic term like "an animal" leads to better results than specifying "a cat-like dog." This trick minimizes the overly strong influence that explicit names can have, facilitating a more effective merger of the two subjects. For SDXL, we use the prompt "a chimera of [animal A] and [animal B]", but it  fails to generate a single and cohesive entity.
+  }
+  \label{fig:blend3}
+\end{figure}
+
+\begin{figure}[h!]
+\centering
+    \includegraphics[width=1\linewidth , align = c]{images/three_blend_supple.pdf}   
+    \caption{
+    Blending \textbf{three} distinct subjects, we use the same prompt—"a portrait of Winnie the Pooh with red hair and a gray beard"—for both SDXL and \ours. However, SDXL significantly downplays the features of Winnie the Pooh. In contrast, our approach effectively absorbs the features from the reference images, retaining the dwarf's outfit and beard, Black Widow's red hair, and Winnie's facial structure.
+    }  \label{fig:blend_3reference}
+\end{figure}
+
+
+\begin{figure}[h!]
+  \centering
+    \makebox[\linewidth]{\includegraphics[width=1\linewidth]{images/pv2.pdf}}
+  \caption{Additional personalized video comparison. The original videos can be viewed \href{https://refdrop-anonymouspaper-f37a6c745f264e0ff8b994669d71e9ca5f34d07a.gitlab.io/index.html}{here}.
+  }
+  \label{fig:person_vid2}
+\end{figure}
+
+
+
+
+
+
+
+
+
+
+\begin{figure}[h!]
+  \centering
+    \centering
+    \includegraphics[width=0.9\linewidth]{images/h1.pdf}
+  \caption{The instruction and example for human evaluation.} \label{fig:h1}
+\end{figure}
+
+\begin{figure}[h!]
+  \centering
+    \centering
+    \includegraphics[width=0.8\linewidth]{images/h3.png}
+  \caption{The instruction and example for human evaluation.} \label{fig:h3}
+\end{figure}
+
+\begin{figure}[h!]
+  \centering
+    \centering
+    \includegraphics[width=0.8\linewidth]{images/h2.pdf}
+  \caption{The instruction and example for human evaluation.} \label{fig:h2}
+\end{figure}
+
+
+
+\begin{figure}[h!]
+  \centering
+    \centering
+    \includegraphics[width=0.8\linewidth]{images/h4.png}
+  \caption{The instruction and example for human evaluation.} \label{fig:h4}
+\end{figure}
+

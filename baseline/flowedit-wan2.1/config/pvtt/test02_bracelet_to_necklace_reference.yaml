@@ -1,0 +1,40 @@
+# PVTT Test 02: Bracelet to Necklace with Reference Self-Attention
+# Jewelry category - Couple bracelets to charm necklace
+# Uses Reference Self-Attention (RefDrop method) for image conditioning
+
+# Model: Use T2V-1.3B (not TI2V, we use our own reference attention)
+model_id: Wan-AI/Wan2.1-T2V-1.3B-Diffusers
+
+video:
+    video_path: ./videos/bracelet_shot1.mp4
+    source_prompt: Two personalized couple bracelets, one silver and one black, placed on a purple silk fabric with decorative stones.
+    target_prompt: A gold charm necklace with colorful gemstone pendants placed on a purple silk fabric with decorative stones.
+    source_blend: bracelets
+    target_blend: necklace
+    # Target product image for reference (JEWE005 = gold necklace with pearls)
+    target_image: ../../data/pvtt-benchmark/images/jewelry/JEWE005_source.jpg
+
+infernece:
+    num_inference_step: 50
+
+training-free-type:
+    flag_flowedit: False
+    flag_flowalign: True
+
+flowedit:
+    strength: 0.7
+    target_guidance_scale: 13.5
+    source_guidance_scale: 5.0
+    save_video: ./results/pvtt/test02_flowedit_bracelet_to_necklace.mp4
+
+flowalign:
+    strength: 0.7
+    target_guidance_scale: 19.5
+    flag_attnmask: True
+    zeta_scale: 1e-3
+    bg_zeta_scale: 1e-3
+    # Clean Reference Attention parameters (PVTT Adaptation of RefDrop)
+    use_reference_attention: True
+    ref_c: 0.8             # RefDrop guidance coefficient (增大以增强效果)
+    # Note: ref_timestep removed - fixed at t=0 (clean features)
+    save_video: ../../experiments/results/flowalign-wan2.1/test02_clean_refdrop_bracelet_to_necklace.mp4

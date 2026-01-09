@@ -15,6 +15,7 @@ from diffusers.schedulers.scheduling_unipc_multistep import UniPCMultistepSchedu
 from transformers import CLIPVisionModel, CLIPImageProcessor
 
 from utils.wan_attention import register_attention_processor
+from utils.reference_utils import extract_clean_reference_features
 
 # 1) load video
 # helper function to load videos
@@ -235,32 +236,70 @@ if __name__ == '__main__':
         masking_flag = config['flowalign']['flag_attnmask']
         masking_layer = [11, 12, 13, 14, 15, 16, 17]
 
-        ## replace attn processor
-        # AttributeError: 'WanTransformer3DModel' object has no attribute 'set_attn_processor'
-        # Be careful, kyujinpy modified WanTransformer3DModel
-        # Add `set_attn_processor` and `attn_processor` functions in above class.
-        register_attention_processor(pipe.transformer, 
-                                    processor_type="MasaCtrlProcessor",
-                                    start_step=start_step,
-                                    end_step=end_step,
-                                    start_layer=start_layer, # attention layer
-                                    end_layer=end_layer,
-                                    layer_idx=layer_idx,
-                                    total_layers=total_layers, # WAN2.1-1.3B has 30 layers / 14B: ??
-                                    total_steps=total_steps,
-                                    masking=masking_flag, # apply cross-attn masking
-                                    masking_layer=masking_layer,
-                                    frame_num=num_frames,
-                                    source_idx=source_idx,
-                                    target_idx=target_idx,
-                                    )
-                                    
-        # Load target image if specified (NEW: for image conditioning)
+        # Load target image if specified (for Reference Attention or TI2V)
         target_image = None
         if config['video'].get('target_image', None):
             target_image_path = config['video']['target_image']
             target_image = Image.open(target_image_path).convert("RGB")
-            print(f"[Image Conditioning] Loaded target image: {target_image_path}")
+            print(f"[Image] Loaded target image: {target_image_path}")
+
+        # Check if using Reference Self-Attention
+        use_reference_attention = config['flowalign'].get('use_reference_attention', False)
+
+        ## Replace attention processor
+        # AttributeError: 'WanTransformer3DModel' object has no attribute 'set_attn_processor'
+        # Be careful, kyujinpy modified WanTransformer3DModel
+        # Add `set_attn_processor` and `attn_processor` functions in above class.
+
+        if use_reference_attention and target_image is not None:
+            # Use Clean Reference Attention (RefDrop PVTT Adaptation)
+            print("[Clean RefDrop] Starting reference attention setup...")
+
+            # Get reference parameters from config
+            ref_c = config['flowalign'].get('ref_c', 0.2)  # Default 0.2 (RefDrop video recommendation)
+
+            # Extract clean reference features (at t=0)
+            ref_bank = extract_clean_reference_features(
+                product_image=target_image,
+                vae=pipe.vae,
+                transformer=pipe.transformer,
+                text_encoder=pipe.text_encoder,
+                tokenizer=pipe.tokenizer,
+                ref_prompt=target_prompt,  # Use target prompt as reference context
+                target_size=(480, 832),
+                device=pipe.device
+            )
+
+            # Register Clean Reference Attention Processor
+            register_attention_processor(
+                pipe.transformer,
+                processor_type="CleanReferenceAttentionProcessor",
+                ref_bank=ref_bank,
+                c=ref_c
+            )
+
+            print(f"[Clean RefDrop] Registered (c={ref_c})")
+
+        else:
+            # Use MasaCtrl (original behavior)
+            register_attention_processor(pipe.transformer,
+                                        processor_type="MasaCtrlProcessor",
+                                        start_step=start_step,
+                                        end_step=end_step,
+                                        start_layer=start_layer, # attention layer
+                                        end_layer=end_layer,
+                                        layer_idx=layer_idx,
+                                        total_layers=total_layers, # WAN2.1-1.3B has 30 layers / 14B: ??
+                                        total_steps=total_steps,
+                                        masking=masking_flag, # apply cross-attn masking
+                                        masking_layer=masking_layer,
+                                        frame_num=num_frames,
+                                        source_idx=source_idx,
+                                        target_idx=target_idx,
+                                        )
+
+            if use_reference_attention and target_image is None:
+                print("[Warning] use_reference_attention=True but no target_image provided, using MasaCtrl")
 
         output = pipe.flowalign(
             video = video,
@@ -283,10 +322,6 @@ if __name__ == '__main__':
     
     elif config['training-free-type']['flag_flowedit']:
 
-        register_attention_processor(pipe.transformer, 
-                                    processor_type="WanAttnProcessor2_0",
-                                    )
-        
         # model register
         ## hyperparameters
         num_inference_steps = config['infernece']['num_inference_step']
@@ -295,7 +330,54 @@ if __name__ == '__main__':
         target_guidance_scale = config['flowedit']['target_guidance_scale']
         source_guidance_scale = config['flowedit']['source_guidance_scale']
         num_frames = len(video)
-        print("Total steps:", total_steps)  
+        print("Total steps:", total_steps)
+
+        # Load target image if specified (for Reference Attention)
+        target_image = None
+        if config['video'].get('target_image', None):
+            target_image_path = config['video']['target_image']
+            target_image = Image.open(target_image_path).convert("RGB")
+            print(f"[Image] Loaded target image: {target_image_path}")
+
+        # Check if using Reference Self-Attention
+        use_reference_attention = config['flowedit'].get('use_reference_attention', False)
+
+        if use_reference_attention and target_image is not None:
+            # Use Clean Reference Attention (RefDrop PVTT Adaptation)
+            print("[Clean RefDrop] Starting reference attention setup for FlowEdit...")
+
+            # Get reference parameters from config
+            ref_c = config['flowedit'].get('ref_c', 0.2)  # Default 0.2 (RefDrop video recommendation)
+
+            # Extract clean reference features (at t=0)
+            ref_bank = extract_clean_reference_features(
+                product_image=target_image,
+                vae=pipe.vae,
+                transformer=pipe.transformer,
+                text_encoder=pipe.text_encoder,
+                tokenizer=pipe.tokenizer,
+                ref_prompt=target_prompt,  # Use target prompt as reference context
+                target_size=(480, 832),
+                device=pipe.device
+            )
+
+            # Register Clean Reference Attention Processor
+            register_attention_processor(
+                pipe.transformer,
+                processor_type="CleanReferenceAttentionProcessor",
+                ref_bank=ref_bank,
+                c=ref_c
+            )
+
+            print(f"[Clean RefDrop] Registered for FlowEdit (c={ref_c})")
+
+        else:
+            # Use default attention processor
+            register_attention_processor(pipe.transformer,
+                                        processor_type="WanAttnProcessor2_0",
+                                        )
+            if use_reference_attention and target_image is None:
+                print("[Warning] use_reference_attention=True but no target_image provided")
 
         output = pipe.flowedit(
             video = video,

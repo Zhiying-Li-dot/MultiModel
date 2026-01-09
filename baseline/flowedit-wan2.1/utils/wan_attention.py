@@ -24,19 +24,26 @@ def register_attention_processor(
     **attn_args,
 ):
     """
+    Register attention processor to model.
+
     Args:
         model: a unet model or a list of unet models
         processor_type: the type of the processor
+            - "MasaCtrlProcessor": For MasaCtrl cross-attention masking
+            - "CleanReferenceAttentionProcessor": For clean product image reference (RefDrop)
+            - default: WanAttnProcessor2_0
+        **attn_args: Arguments for the processor
     """
     if not isinstance(model, (list, tuple)):
         model = [model]
 
     if processor_type == "MasaCtrlProcessor":
         # start_step=4, start_layer=10, layer_idx=None, step_idx=None, total_layers=32, total_steps=50, model_type="SD"
-        # start_step = 
-        # start_layer = 
         processor = MasaCtrlProcessor(**attn_args)
-
+    elif processor_type == "CleanReferenceAttentionProcessor":
+        # ref_bank, c=0.2
+        # RECOMMENDED: RefDrop with linear interpolation for clean product images
+        processor = CleanReferenceAttentionProcessor(**attn_args)
     else:
         processor = WanAttnProcessor2_0()
 
@@ -473,3 +480,183 @@ class MasaCtrlProcessor(nn.Module):
             return hidden_states, (src_attn_map, tar_attn_map)
         else:
             return hidden_states, None
+
+
+class CleanReferenceAttentionProcessor:
+    """
+    Clean Reference Self-Attention Processor (PVTT Adaptation).
+
+    Based on RefDrop (NeurIPS 2024) with linear interpolation formula,
+    adapted for clean reference images (real product photos).
+
+    Key differences from RefDrop original paper:
+    - RefDrop: reference is generated image (participates in denoising)
+    - PVTT: reference is real product photo (clean features at t=0)
+    - K_ref, V_ref are fixed (extracted once), not dynamic
+
+    Formula: X' = c * Attention(Q, K_ref, V_ref) + (1-c) * Attention(Q, K, V)
+    """
+
+    def __init__(
+        self,
+        ref_bank: Dict[str, Dict[str, torch.Tensor]],
+        c: float = 0.2,
+        layer_indices: Optional[List[int]] = None,
+    ):
+        """
+        Args:
+            ref_bank: {layer_name: {"key": K_ref, "value": V_ref}}
+                     Fixed reference features extracted from clean product image (t=0)
+            c: Reference guidance coefficient (0.0-1.0)
+               0.0 = no reference (pure self-attention)
+               0.2 = RefDrop recommended (video generation) ⭐
+               1.0 = fully use reference
+            layer_indices: Optional list of layer indices to apply reference
+                          None = apply to all layers
+        """
+        self.ref_bank = ref_bank
+        self.c = c
+        self.layer_indices = layer_indices
+        self.cur_att_layer = 0
+
+        print(f"[Clean RefDrop] Initialized with {len(ref_bank)} reference layers")
+        print(f"[Clean RefDrop] Guidance coefficient c={c}")
+
+    def __call__(
+        self,
+        attn: Attention,
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        rotary_emb: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """
+        Modified attention forward with RefDrop linear interpolation.
+
+        Formula:
+            output = c * Attention(Q, K_ref, V_ref) + (1-c) * Attention(Q, K, V)
+
+        For cross-attention: Normal forward (no modification)
+        """
+        # Determine if this is cross-attention or self-attention
+        is_cross_attention = encoder_hidden_states is not None
+
+        # Handle image conditioning (from I2V models)
+        encoder_hidden_states_img = None
+        if attn.add_k_proj is not None:
+            image_context_length = encoder_hidden_states.shape[1] - 512
+            encoder_hidden_states_img = encoder_hidden_states[:, :image_context_length]
+            encoder_hidden_states = encoder_hidden_states[:, image_context_length:]
+
+        if encoder_hidden_states is None:
+            encoder_hidden_states = hidden_states
+
+        # Compute Q, K, V
+        query = attn.to_q(hidden_states)
+        key = attn.to_k(encoder_hidden_states)
+        value = attn.to_v(encoder_hidden_states)
+
+        # Apply normalization if available
+        if attn.norm_q is not None:
+            query = attn.norm_q(query)
+        if attn.norm_k is not None:
+            key = attn.norm_k(key)
+
+        # Reshape for multi-head attention
+        query = query.unflatten(2, (attn.heads, -1)).transpose(1, 2)
+        key = key.unflatten(2, (attn.heads, -1)).transpose(1, 2)
+        value = value.unflatten(2, (attn.heads, -1)).transpose(1, 2)
+
+        # Apply rotary embeddings if available
+        if rotary_emb is not None:
+            def apply_rotary_emb(hidden_states: torch.Tensor, freqs: torch.Tensor):
+                x_rotated = torch.view_as_complex(hidden_states.to(torch.float64).unflatten(3, (-1, 2)))
+                x_out = torch.view_as_real(x_rotated * freqs).flatten(3, 4)
+                return x_out.type_as(hidden_states)
+
+            query = apply_rotary_emb(query, rotary_emb)
+            key = apply_rotary_emb(key, rotary_emb)
+
+        # I2V task handling
+        hidden_states_img = None
+        if encoder_hidden_states_img is not None:
+            key_img = attn.add_k_proj(encoder_hidden_states_img)
+            key_img = attn.norm_added_k(key_img)
+            value_img = attn.add_v_proj(encoder_hidden_states_img)
+
+            key_img = key_img.unflatten(2, (attn.heads, -1)).transpose(1, 2)
+            value_img = value_img.unflatten(2, (attn.heads, -1)).transpose(1, 2)
+
+            key = torch.cat([key, key_img], dim=2)
+            value = torch.cat([value, value_img], dim=2)
+
+        # ===== REFDROP LINEAR INTERPOLATION (only for self-attention) =====
+        if not is_cross_attention and self.ref_bank and self.c > 0:
+            # 1. Normal self-attention
+            attn_self = F.scaled_dot_product_attention(
+                query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+            )
+
+            # 2. Find matching layer in ref_bank
+            # ref_bank keys are like 'blocks.0.attn1', 'blocks.1.attn1', etc.
+            # self.cur_att_layer counts all attention calls (including cross-attention)
+            # We need to match self-attention layers only
+            layer_key = None
+            # Use modulo to cycle through layers for each denoising step
+            # 30 blocks × 2 attention (attn1 + attn2) = 60 attention calls per step
+            num_layers = len(self.ref_bank)  # 30 layers
+            layer_in_step = self.cur_att_layer % (num_layers * 2)  # Reset every step
+            block_idx = layer_in_step // 2  # Each block has attn1 + attn2
+            candidate_key = f"blocks.{block_idx}.attn1"
+            if candidate_key in self.ref_bank:
+                layer_key = candidate_key
+
+            # 3. If reference available, compute reference attention
+            if layer_key is not None:
+                if self.cur_att_layer == 0:  # Print only once per denoising step
+                    print(f"[RefDrop] Applying reference attention: {layer_key}")
+                K_ref = self.ref_bank[layer_key]["key"]
+                V_ref = self.ref_bank[layer_key]["value"]
+
+                # Expand to match batch size
+                batch_size = query.shape[0]
+                if K_ref.shape[0] == 1 and batch_size > 1:
+                    K_ref = K_ref.expand(batch_size, -1, -1)
+                    V_ref = V_ref.expand(batch_size, -1, -1)
+
+                # Reshape K_ref, V_ref to match multi-head format
+                head_dim = query.shape[-1]
+                K_ref = K_ref.unflatten(2, (attn.heads, head_dim)).transpose(1, 2)
+                V_ref = V_ref.unflatten(2, (attn.heads, head_dim)).transpose(1, 2)
+
+                # Compute reference attention
+                attn_ref = F.scaled_dot_product_attention(
+                    query, K_ref, V_ref, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+                )
+
+                # 4. RefDrop linear interpolation ⭐ CORE FORMULA
+                hidden_states = self.c * attn_ref + (1 - self.c) * attn_self
+            else:
+                # No reference for this layer, use normal attention
+                hidden_states = attn_self
+        else:
+            # Cross-attention or no reference: normal forward
+            hidden_states = F.scaled_dot_product_attention(
+                query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+            )
+
+        # Reshape back
+        hidden_states = hidden_states.transpose(1, 2).flatten(2, 3)
+        hidden_states = hidden_states.type_as(query)
+
+        if hidden_states_img is not None:
+            hidden_states = hidden_states + hidden_states_img
+
+        # Output projection
+        hidden_states = attn.to_out[0](hidden_states)
+        hidden_states = attn.to_out[1](hidden_states)
+
+        # Increment layer counter
+        self.cur_att_layer += 1
+
+        return hidden_states, None  # Return (hidden_states, attn_map) like MasaCtrlProcessor

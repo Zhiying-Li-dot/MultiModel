@@ -1,5 +1,30 @@
 # Reference Self-Attention for PVTT Baseline
 
+> **⚠️ 重要说明（2026-01-07 最终版）**
+>
+> 本文档基于 RefDrop (NeurIPS 2024) 方法，针对 **真实产品图片** 进行适配。
+>
+> **RefDrop 核心公式：**
+> ```
+> X'_RFG = c · Attention(Q_i, K_ref, V_ref) + (1-c) · Attention(Q_i, K_i, V_i)
+> ```
+>
+> **RefDrop 原文的局限：**
+> - RefDrop 论文假设 reference 是**生成的图片**，不是真实照片
+> - 论文第 460 行明确指出："支持 clean reference images 是 future work"
+>
+> **我们的适配方案：**
+> - ✅ 使用 **Clean Image + Fixed Features** 方法
+> - ✅ 从产品图片提取固定的 K_ref, V_ref（在 t=0）
+> - ✅ 所有 denoising step 共用这些固定 features
+> - ✅ 借鉴 ControlNet 和 IP-Adapter 的成功经验
+>
+> **核心参数：**
+> - `c = 0.2`（RefDrop 推荐值，video generation）
+> - `timestep = 0`（提取 clean features）
+>
+> **参考文献：** [RefDrop: Controllable Consistency in Image or Video Generation](https://arxiv.org/pdf/2405.17661)
+
 ## 背景
 
 ### PVTT 任务定义 vs 当前 Baseline 的 Gap
@@ -45,6 +70,38 @@
 | IP-Adapter | Cross-Attention | ✅ 需要 | Image generation |
 | RefDrop | Self-Attention | ❌ 不需要 | Video generation |
 
+**RefDrop 核心要点：** ⭐⭐⭐
+
+1. **公式（最关键）：**
+   ```
+   X'_RFG = c · Attention(Q_i, K_ref, V_ref) + (1-c) · Attention(Q_i, K_i, V_i)
+   ```
+   - 计算两次 attention，线性插值
+   - **不是** K/V 拼接！
+
+2. **参数：**
+   - `c = 0.2` for video generation（论文推荐）
+   - `c = 0.5` for image generation
+
+3. **Reference 处理（原文）：**
+   - Reference image **必须是生成的**（论文第 59 行）
+   - Reference 作为 batch 的第一个样本
+   - 每个 denoising step，reference 和其他样本同步 denoise
+
+4. **应用层：**
+   - 只修改 spatial self-attention layers
+   - Cross-attention 和 temporal attention 保持不变
+
+**RefDrop 的局限性：** ⚠️
+
+论文明确指出（第 59 行）：
+> "Furthermore, our reference images are **generated** by the same model, in contrast to IP-Adapter's reliance on externally sourced image."
+
+论文第 460 行（Future Work）：
+> "Another exciting prospect involves enhancing our method to **accept clean reference images as input**, similar to the IP-Adapter... Achieving this capability would represent a significant advancement"
+
+**结论：RefDrop 原文不支持真实产品图片！需要适配。**
+
 **引用：**
 > "RefDrop integrates the reference image directly into the self-attention layer without needing additional training."
 
@@ -58,6 +115,82 @@
 - 用 reference image forward 一遍，保存 features
 - 生成时在 self-attention 中读取这些 features
 - 三种模式：reference-attn, reference-adain, reference-attn+adain
+
+**关键启发：**
+- ✅ **使用 clean image features**
+- ✅ 预先提取，推理时复用
+- ✅ 成功应用于 image generation
+
+---
+
+## PVTT 适配方案：使用真实产品图片
+
+### 问题分析
+
+| 方面 | RefDrop 原文 | PVTT 需求 |
+|------|------------|----------|
+| Reference 来源 | 生成的图片 | **真实产品照片** |
+| Reference 状态 | 动态（参与 denoising） | **Clean（不应加噪声）** |
+| K, V 提取 | 每个 step 动态提取 | **需要适配方案** |
+
+### 方案对比
+
+#### 方案 1：Clean Image + Fixed Features ⭐ **推荐**
+
+**核心思路：**
+```python
+# 预处理（一次性）
+z_ref = vae.encode(product_image)  # Clean latent，不加噪声
+ref_bank = extract_features(z_ref, t=0)  # 在 t=0 提取 K, V
+
+# Generation（每个 step t）
+# 使用固定的 ref_bank，不随 t 变化
+output = c * attn(Q, K_ref, V_ref) + (1-c) * attn(Q, K, V)
+```
+
+**优点：**
+- ✅ 符合 PVTT 需求（产品图片提供精确外观）
+- ✅ 简单高效（一次提取，多次复用）
+- ✅ 有成功先例（ControlNet, IP-Adapter）
+- ✅ 计算成本低
+
+**理论支持：**
+- ControlNet：用 clean image features → 成功
+- IP-Adapter：用 CLIP clean features → 成功
+- RefDrop 论文：支持 clean image 是 "future work"
+
+#### 方案 2：Noisy Image + Dynamic Features
+
+**核心思路：**
+```python
+# 每个 step t
+z_ref_noisy = add_noise(z_ref, t)  # 产品图片加噪声
+batch = [z_ref_noisy, video_frames...]
+# K_ref, V_ref 动态提取
+```
+
+**缺点：**
+- ❌ 产品图片加噪声破坏外观
+- ❌ 计算成本高
+- ❌ 不适合 PVTT
+
+#### 方案 3：DDIM Inversion + Synchronized Denoising
+
+**缺点：**
+- ❌ 计算成本极高
+- ❌ 实现复杂
+- ❌ 不适合 baseline
+
+### 最终选择：方案 1（Clean Image + Fixed Features）
+
+**与 RefDrop 原文的差异：**
+
+| RefDrop 原文 | PVTT 适配 |
+|-------------|---------|
+| Reference 是生成的 | Reference 是真实照片 |
+| 动态（参与 denoising）| **静态（fixed features）** |
+| 每个 step 动态提取 K, V | **预提取（t=0）** |
+| 论文验证 | 借鉴 ControlNet 思路 |
 
 ---
 
@@ -125,16 +258,17 @@
 │  │     1. Forward diffusion: Zt_src        │                     │
 │  │     2. Coupling: Zt_tar                 │                     │
 │  │     3. Transformer forward with         │                     │
-│  │        **Modified Self-Attention**:     │                     │
+│  │        **RefDrop Self-Attention**:      │                     │
 │  │                                         │                     │
 │  │        Q = to_q(hidden_states)          │                     │
 │  │        K = to_k(hidden_states)          │                     │
 │  │        V = to_v(hidden_states)          │                     │
 │  │                                         │                     │
-│  │        K' = concat([K, K_ref], dim=1)   │← 从 bank 读取      │
-│  │        V' = concat([V, V_ref], dim=1)   │                     │
+│  │        attn_self = Attention(Q, K, V)   │← 正常 attention    │
+│  │        attn_ref = Attention(Q, K_ref, V_ref)  ← 从 bank 读取 │
 │  │                                         │                     │
-│  │        output = attention(Q, K', V')    │                     │
+│  │        output = c*attn_ref + (1-c)*attn_self  ← 线性插值    │
+│  │        (c=0.2 for video)                │                     │
 │  │                                         │                     │
 │  │     4. FlowAlign update                 │                     │
 │  └─────────┬───────────────────────────────┘                     │
@@ -152,87 +286,48 @@
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### 核心机制
+### 核心机制（PVTT 适配版本）
 
-#### 1. Reference Feature Extraction
+#### 1. RefDrop 核心公式（保持不变）
 
-```python
-def extract_reference_features(
-    product_image: Image,
-    vae,
-    transformer,
-    device="cuda"
-):
-    """
-    提取产品图片的 reference features（只做一次）
-
-    Args:
-        product_image: 产品图片（PIL Image）
-        vae: VAE encoder
-        transformer: Wan transformer
-
-    Returns:
-        ref_bank: {layer_idx: {"key": K_ref, "value": V_ref}}
-    """
-    # 1. 编码产品图片到 latent space
-    ref_tensor = preprocess_image(product_image)  # [3, H, W]
-    with torch.no_grad():
-        z_ref = vae.encode([ref_tensor.unsqueeze(1)])[0]  # [16, 1, H', W']
-
-    # 2. 准备 feature extraction
-    ref_bank = {}
-
-    def save_ref_features(name):
-        def hook(module, input, output):
-            # 在 self-attention 中保存 K, V
-            hidden_states = input[0]
-            K_ref = module.to_k(hidden_states)
-            V_ref = module.to_v(hidden_states)
-            ref_bank[name] = {
-                "key": K_ref.detach().clone(),
-                "value": V_ref.detach().clone()
-            }
-        return hook
-
-    # 3. 注册 hooks 到所有 self-attention 层
-    hooks = []
-    for name, module in transformer.named_modules():
-        if is_self_attention_layer(module):
-            hook = module.register_forward_hook(save_ref_features(name))
-            hooks.append(hook)
-
-    # 4. Forward pass（只提取 features，不生成）
-    with torch.no_grad():
-        _ = transformer(
-            [z_ref],
-            t=torch.zeros(1, device=device) * 0.5,  # 中等噪声水平
-            context=dummy_context,
-            seq_len=compute_seq_len(z_ref)
-        )
-
-    # 5. 移除 hooks
-    for hook in hooks:
-        hook.remove()
-
-    return ref_bank
+```
+X'_RFG = c · Attention(Q_i, K_ref, V_ref) + (1-c) · Attention(Q_i, K_i, V_i)
 ```
 
-#### 2. Modified Self-Attention Processor
+**说明：**
+- `Attention(Q_i, K_ref, V_ref)`: 用 reference 的 K, V 计算 attention
+- `Attention(Q_i, K_i, V_i)`: 正常的 self-attention
+- `c`: reference guidance coefficient（**c = 0.2 for video generation**）
+- **线性插值**，不是拼接！
+
+**PVTT 适配的关键修改：**
+- ❌ **不是** Reference 作为 batch 第一个样本（原文方法）
+- ✅ **而是** 预先提取 clean image 的 K_ref, V_ref
+- ✅ 在 t=0 提取一次，所有 denoising step 复用
+- ✅ 类似 ControlNet 的做法
+
+#### 2. Clean Reference Attention Processor（PVTT 适配）
 
 ```python
-class ReferenceAttentionProcessor:
+class CleanReferenceAttentionProcessor:
     """
-    Reference Self-Attention Processor (基于 RefDrop)
-    在 self-attention 中注入 reference features
+    RefDrop with Clean Reference Image (PVTT Adaptation)
+
+    核心修改：使用固定的 K_ref, V_ref（从 clean product image 提取）
+    适用于：真实产品图片（非生成图片）
     """
-    def __init__(self, ref_bank, ref_strength=1.0):
+    def __init__(self, ref_bank: Dict, c: float = 0.2):
         """
         Args:
             ref_bank: {layer_name: {"key": K_ref, "value": V_ref}}
-            ref_strength: Reference 影响强度（0.0-1.0）
+                     从 clean product image 提取的固定 features
+            c: Reference guidance coefficient (0.0-1.0)
+               0.0 = 无 reference（纯 self-attention）
+               0.2 = RefDrop 推荐值（video generation）⭐
+               1.0 = 完全使用 reference
         """
         self.ref_bank = ref_bank
-        self.ref_strength = ref_strength
+        self.c = c
 
     def __call__(
         self,
@@ -243,99 +338,209 @@ class ReferenceAttentionProcessor:
         **kwargs
     ):
         """
-        Modified self-attention with reference injection
+        Modified self-attention with RefDrop linear interpolation
+
+        Formula:
+            output = c * Attention(Q, K_ref, V_ref) + (1-c) * Attention(Q, K, V)
+
+        注意：K_ref, V_ref 是固定的（在 t=0 提取），不随 denoising step 变化
         """
-        batch_size = hidden_states.shape[0]
-
-        # 1. 计算 Q, K, V（正常流程）
-        query = attn_module.to_q(hidden_states)
-
-        if encoder_hidden_states is None:
-            # Self-Attention
-            key = attn_module.to_k(hidden_states)
-            value = attn_module.to_v(hidden_states)
-        else:
-            # Cross-Attention（不修改）
+        # 1. Cross-attention: 不修改
+        if encoder_hidden_states is not None:
+            query = attn_module.to_q(hidden_states)
             key = attn_module.to_k(encoder_hidden_states)
             value = attn_module.to_v(encoder_hidden_states)
-            # 直接返回，不注入 reference
             return attn_module.attention(query, key, value)
 
-        # 2. 从 ref_bank 获取 reference features
-        if layer_name in self.ref_bank:
-            K_ref = self.ref_bank[layer_name]["key"]
+        # 2. Self-Attention: 计算 Q, K, V
+        query = attn_module.to_q(hidden_states)
+        key = attn_module.to_k(hidden_states)
+        value = attn_module.to_v(hidden_states)
+
+        # 3. 正常的 self-attention
+        attn_self = attn_module.attention(query, key, value)
+
+        # 4. 如果有 reference，计算 reference attention
+        if layer_name in self.ref_bank and self.c > 0:
+            K_ref = self.ref_bank[layer_name]["key"]  # [1, seq_len_ref, dim]
             V_ref = self.ref_bank[layer_name]["value"]
 
-            # 3. Expand to match batch size
+            # Expand to match batch size
+            batch_size = query.shape[0]
             K_ref = K_ref.expand(batch_size, -1, -1)
             V_ref = V_ref.expand(batch_size, -1, -1)
 
-            # 4. 拼接 reference features
-            # key: [B, seq_len, dim] + [B, ref_seq_len, dim]
-            key = torch.cat([key, K_ref * self.ref_strength], dim=1)
-            value = torch.cat([value, V_ref * self.ref_strength], dim=1)
+            # 计算 reference attention
+            attn_ref = attn_module.attention(query, K_ref, V_ref)
 
-        # 5. 计算 attention（Q 不变，K/V 增强）
-        output = attn_module.attention(query, key, value)
+            # 5. RefDrop 线性插值（核心公式）
+            output = self.c * attn_ref + (1 - self.c) * attn_self
+        else:
+            # 没有 reference 或 c=0，返回正常 attention
+            output = attn_self
 
         return output
 ```
 
-#### 3. 集成到 FlowAlign
+#### 3. Clean Reference Feature Extraction（PVTT 适配）
 
 ```python
-def flowalign_with_reference(
-    model,
+def extract_clean_reference_features(
+    product_image: Image.Image,
     vae,
+    transformer,
     text_encoder,
-    source_video,
-    source_prompt,
-    target_prompt,
-    target_image=None,         # NEW: 产品图片
-    ref_strength=1.0,          # NEW: Reference 强度
-    **flowalign_params
-):
+    tokenizer,
+    ref_prompt: str,
+    target_size: tuple = (480, 832),
+    device: str = "cuda"
+) -> Dict[str, Dict[str, torch.Tensor]]:
     """
-    FlowAlign with Reference Self-Attention
+    从 clean product image 提取固定的 reference features
+
+    ⚠️ PVTT 适配关键：
+    - 在 timestep=0 提取 features（clean state，无噪声）
+    - 所有 denoising step 共用这些固定的 K_ref, V_ref
+    - 不随生成过程的 timestep 变化
+
+    Args:
+        product_image: 真实产品图片（clean）
+        ref_prompt: 产品描述（target prompt）
+        target_size: 目标分辨率
+        device: 设备
+
+    Returns:
+        ref_bank: {layer_name: {"key": K_ref, "value": V_ref}}
     """
-    # Step 1: Extract reference features（如果提供了产品图片）
-    if target_image is not None:
-        print("Extracting reference features from product image...")
-        ref_bank = extract_reference_features(
-            product_image=target_image,
-            vae=vae,
-            transformer=model,
-            device=device
-        )
+    print("[Clean RefDrop] Extracting features from product image...")
 
-        # Step 2: 注册 Reference Attention Processor
-        ref_processor = ReferenceAttentionProcessor(
-            ref_bank=ref_bank,
-            ref_strength=ref_strength
-        )
-        register_attention_processor(model, ref_processor)
-        print(f"Reference attention registered (strength={ref_strength})")
-    else:
-        ref_bank = None
-        print("No product image provided, using vanilla FlowAlign")
+    # 1. 预处理 + VAE encode
+    ref_tensor = preprocess_image(product_image, target_size)  # [3, H, W]
+    ref_tensor = ref_tensor.unsqueeze(0).unsqueeze(2).to(device)  # [1, 3, 1, H, W]
 
-    # Step 3: 正常执行 FlowAlign
-    # （attention processor 会自动在 forward 时调用）
-    output = flowalign(
-        model=model,
-        vae=vae,
-        text_encoder=text_encoder,
-        source_video=source_video,
-        source_prompt=source_prompt,
-        target_prompt=target_prompt,
-        **flowalign_params
+    with torch.no_grad():
+        # 2. Encode to latent (no noise!)
+        z_ref = vae.encode(ref_tensor).latent_dist.sample()  # [1, 16, 1, H', W']
+        print(f"[Clean RefDrop] Latent shape: {z_ref.shape}")
+
+        # 3. Encode text
+        prompt_embeds = text_encoder(
+            tokenizer(
+                ref_prompt,
+                padding="max_length",
+                max_length=512,
+                truncation=True,
+                return_tensors="pt"
+            ).input_ids.to(device)
+        )[0]
+
+        # 4. 准备 hooks 提取 K, V
+        ref_bank = {}
+        hooks = []
+
+        def make_hook(layer_name):
+            def hook_fn(module, input, output):
+                if len(input) > 0:
+                    hidden_states = input[0]
+                    # 只在 self-attention 中保存（cross-attention 跳过）
+                    if len(input) == 1 or input[1] is None:
+                        try:
+                            K_ref = module.to_k(hidden_states)
+                            V_ref = module.to_v(hidden_states)
+                            ref_bank[layer_name] = {
+                                "key": K_ref.detach().clone(),
+                                "value": V_ref.detach().clone()
+                            }
+                        except AttributeError:
+                            pass
+            return hook_fn
+
+        # 5. 注册 hooks
+        for name, module in transformer.named_modules():
+            if hasattr(module, 'to_q') and hasattr(module, 'to_k'):
+                hook = module.register_forward_hook(make_hook(name))
+                hooks.append(hook)
+
+        print(f"[Clean RefDrop] Registered {len(hooks)} hooks")
+
+        # 6. Forward pass at t=0 (clean state) ⭐ 关键
+        t = torch.zeros(1, device=device)  # t=0 for clean features
+        try:
+            _ = transformer(
+                z_ref,
+                encoder_hidden_states=prompt_embeds,
+                timestep=t,
+                return_dict=False
+            )
+        except Exception as e:
+            print(f"[Clean RefDrop] Warning: Forward pass error: {e}")
+            # Continue anyway, we may have extracted some features
+
+        # 7. 清理 hooks
+        for hook in hooks:
+            hook.remove()
+
+    print(f"[Clean RefDrop] Extracted features from {len(ref_bank)} layers (t=0)")
+
+    # Print sample layer info
+    if ref_bank:
+        sample_name = list(ref_bank.keys())[0]
+        sample_k = ref_bank[sample_name]["key"]
+        print(f"[Clean RefDrop] Sample layer '{sample_name}' K shape: {sample_k.shape}")
+
+    return ref_bank
+```
+
+#### 4. 集成到 FlowAlign（PVTT 适配）
+
+```python
+# In awesome_wan_editing.py
+
+if config['flowalign'].get('use_reference_attention', False) and target_image is not None:
+    print("[Clean RefDrop] Starting reference attention setup...")
+
+    # 参数
+    ref_c = config['flowalign'].get('ref_c', 0.2)  # 默认 0.2（video 推荐值）
+
+    # Step 1: 提取 clean reference features（一次性，预处理）
+    ref_bank = extract_clean_reference_features(
+        product_image=target_image,
+        vae=pipe.vae,
+        transformer=pipe.transformer,
+        text_encoder=pipe.text_encoder,
+        tokenizer=pipe.tokenizer,
+        ref_prompt=target_prompt,  # 使用 target prompt 作为 reference context
+        target_size=(480, 832),
+        device=pipe.device
     )
 
-    # Step 4: 清理（移除 processor）
-    if ref_bank is not None:
-        remove_attention_processor(model)
+    # Step 2: 注册 Clean Reference Attention Processor
+    register_attention_processor(
+        pipe.transformer,
+        processor_type="CleanReferenceAttentionProcessor",
+        ref_bank=ref_bank,
+        c=ref_c
+    )
 
-    return output
+    print(f"[Clean RefDrop] Registered (c={ref_c})")
+
+else:
+    print("[FlowAlign] No reference attention, using vanilla FlowAlign")
+
+# Step 3: 正常执行 FlowAlign
+# （attention processor 会自动在 forward 时调用）
+output = pipe.flowalign(
+    video=video,
+    source_prompt=source_prompt,
+    target_prompt=target_prompt,
+    height=480,
+    width=832,
+    num_inference_steps=num_inference_steps,
+    strength=strength,
+    target_guidance_scale=target_guidance_scale,
+    fg_zeta_scale=fg_zeta_scale,
+    bg_zeta_scale=bg_zeta_scale,
+).frames[0]
 ```
 
 ---
@@ -368,51 +573,53 @@ def is_self_attention_layer(module):
 - `baseline/flowedit-wan2.1/utils/wan_attention.py`
 - 已经有 `register_attention_processor` 机制
 
-### 2. Reference Timestep 选择
+### 2. Feature Extraction Timestep（PVTT 适配）
 
-**问题：** 在哪个噪声水平提取 reference features？
+**PVTT 方案：固定使用 t=0（clean features）** ⭐
 
-**选项：**
+**理由：**
+- ✅ 产品图片就是要提供精确外观
+- ✅ Clean features 保留最多细节
+- ✅ 类似 ControlNet 的成功经验
+- ✅ 符合直觉（产品外观不应加噪声）
 
-| Timestep | 噪声水平 | 特性 | 适用场景 |
-|----------|---------|------|----------|
-| t = 0.0 | 无噪声 | 细节丰富，语义精确 | 需要精确外观 |
-| t = 0.5 | 中等噪声 | 语义清晰，细节模糊 | 平衡外观和灵活性 |
-| t = 1.0 | 纯噪声 | 只有高层语义 | 只控制风格 |
+**可选探索（如果效果太强）：**
 
-**RefDrop 建议：** 使用多个 timestep 的平均
+| Timestep | 语义层次 | 适用场景 |
+|----------|---------|---------|
+| t = 0.0 | 最细节 | 需要精确外观 ⭐ **推荐** |
+| t = 0.3 | 中-细节 | 平衡外观和灵活性 |
+| t = 0.5 | 中等语义 | 只控制大致风格 |
 
+**实现：**
 ```python
-# 在多个噪声水平提取 features，然后平均
-timesteps = [0.0, 0.3, 0.5]
-ref_banks = []
-for t in timesteps:
-    bank = extract_reference_features(image, vae, model, timestep=t)
-    ref_banks.append(bank)
-
-# 平均
-ref_bank_avg = average_ref_banks(ref_banks)
+# 默认方案：t=0（clean）
+t = torch.zeros(1, device=device)  # t=0 for clean features
+_ = transformer(z_ref, encoder_hidden_states=prompt_embeds, timestep=t, ...)
 ```
 
-**建议：先用 t=0.5 测试，效果不好再尝试多 timestep**
+**注意：** RefDrop 原文不存在这个参数（因为 reference 是动态的）
 
-### 3. Reference Strength 控制
+### 3. Reference Guidance Coefficient（c）控制
 
 **作用：** 控制产品图片的影响强度
 
+**RefDrop 公式：**
 ```python
-# 在拼接时乘以 strength
-key = torch.cat([key, K_ref * ref_strength], dim=1)
-value = torch.cat([value, V_ref * ref_strength], dim=1)
+output = c * attn_ref + (1 - c) * attn_self
 ```
 
 **参数范围：**
-- `ref_strength = 0.0`: 无 reference（等价于原始 FlowAlign）
-- `ref_strength = 0.5`: 中等影响
-- `ref_strength = 1.0`: 完全 reference
-- `ref_strength > 1.0`: 增强 reference（可能过拟合）
+- `c = 0.0`: 无 reference（等价于原始 FlowAlign）
+- `c = 0.2`: **RefDrop 推荐值（video generation）** ⭐
+- `c = 0.5`: 中等影响（平衡 reference 和 self-attention）
+- `c = 1.0`: 完全使用 reference（可能丢失运动信息）
 
-**建议：** 从 1.0 开始，根据效果调整
+**RefDrop 论文建议：**
+- Image generation: `c = 0.5`
+- Video generation: `c = 0.2`（更低，避免破坏时序一致性）
+
+**建议：** 从 0.2 开始，根据效果调整到 0.1-0.5 之间
 
 ### 4. 哪些层注入 Reference
 
@@ -465,8 +672,8 @@ value = torch.cat([value, V_ref * ref_strength], dim=1)
    - t = 0.0, 0.3, 0.5, 0.7, 1.0
    - 多 timestep 平均
 
-2. **Strength 消融**
-   - ref_strength = 0.0, 0.3, 0.5, 0.7, 1.0, 1.5
+2. **Coefficient (c) 消融**
+   - c = 0.0, 0.1, 0.2, 0.3, 0.5, 0.7, 1.0
 
 3. **Layer Selection 消融**
    - All layers
@@ -491,11 +698,12 @@ value = torch.cat([value, V_ref * ref_strength], dim=1)
        video_path: jewelry/JEWE001.mp4
        source_prompt: "..."
        target_prompt: "..."
-       target_image: jewelry/NECK001.jpg  # NEW
+       target_image: jewelry/NECK001.jpg  # NEW: 产品图片路径
 
    flowalign:
-       ref_strength: 1.0  # NEW
-       ref_timestep: 0.5  # NEW
+       use_reference_attention: True    # NEW: 启用 Clean RefDrop
+       ref_c: 0.2                       # NEW: RefDrop coefficient (0.2 for video)
+       # 注意：不需要 ref_timestep 参数（固定 t=0）
    ```
 
 3. **批量实验**
@@ -549,47 +757,51 @@ value = torch.cat([value, V_ref * ref_strength], dim=1)
 
 **表现：** 所有帧都太像产品图片，失去模板的运动
 
-**原因：** `ref_strength` 太大，或者所有层都注入
+**原因：** `c` 太大（接近 1.0），或者所有层都注入
 
 **解决：**
-- 降低 `ref_strength`（试试 0.3-0.7）
+- 降低 `c`（试试 0.1-0.3，RefDrop 推荐 0.2）
 - 只在 deep layers 注入（控制细节，不影响运动）
+- 检查是否使用了正确的线性插值公式
 
 ### 问题 2: Reference 太弱，外观不像
 
 **表现：** 还是主要靠 text prompt，产品图片影响小
 
-**原因：** `ref_strength` 太小，或者只在少数层注入
+**原因：** `c` 太小（<0.1），或者只在少数层注入
 
 **解决：**
-- 增大 `ref_strength`（试试 1.0-1.5）
+- 增大 `c`（试试 0.3-0.5）
 - 在更多层注入（middle + deep）
+- 检查 ref_bank 是否正确提取
 
 ### 问题 3: 时序不一致（闪烁）
 
 **表现：** 相邻帧之间外观跳变
 
-**原因：** Reference features 是静态的，每帧独立参考
+**原因：**
+- Reference features 是静态的，每帧独立参考
+- `c` 太大，破坏了 temporal attention
 
 **解决：**
-1. **降低 ref_strength**（减少干扰）
+1. **降低 c**（RefDrop 推荐 video 用 0.2，比 image 的 0.5 更低）
 2. **只在特定层注入**（保留其他层的 temporal attention）
-3. **增加 temporal smoothing**
-   ```python
-   # 在相邻帧之间插值 reference strength
-   ref_strength_per_frame = smoothly_vary(base_strength, num_frames)
-   ```
+3. **调整 ref_timestep**（较大的 t 提供更高层的语义，减少细节干扰）
 
 ### 问题 4: 计算成本高
 
 **表现：** 推理变慢
 
-**原因：** K, V 的序列长度增加（拼接了 reference）
+**原因：**
+- 需要计算两次 attention（attn_self 和 attn_ref）
+- 比原始 FlowAlign 慢约 2x（每个 self-attention 层）
 
 **解决：**
 - 只在部分层注入（减少计算）
-- 压缩 reference features（降低维度）
+- 降低 `c`（当 c 接近 0 时，可以跳过 attn_ref 计算）
 - 使用 Flash Attention（优化 attention 计算）
+
+**注意：** RefDrop 比 K/V 拼接方法计算更高效（序列长度不变）
 
 ---
 
@@ -650,9 +862,17 @@ value = torch.cat([value, V_ref * ref_strength], dim=1)
 3. **测试实验：**
    ```bash
    python awesome_wan_editing.py \
-       --config config/pvtt/test01_watch_to_bracelet.yaml \
-       --target_image ../../data/pvtt-benchmark/images/jewelry/bracelet.jpg \
-       --ref_strength 1.0
+       --config config/pvtt/test01_watch_to_bracelet_reference.yaml
+   ```
+
+   Config 文件示例：
+   ```yaml
+   video:
+       target_image: ../../data/pvtt-benchmark/images/jewelry/JEWE002.jpg
+   flowalign:
+       use_reference_attention: True
+       ref_c: 0.2          # RefDrop 推荐值（video generation）
+       # 注意：固定使用 t=0（clean features）
    ```
 
 4. **对比结果：**
@@ -667,6 +887,88 @@ value = torch.cat([value, V_ref * ref_strength], dim=1)
 
 ---
 
-**Status:** Design Complete
+---
+
+## 总结：PVTT 适配关键点 ⭐
+
+### RefDrop 原文 vs PVTT 适配
+
+| 方面 | RefDrop 原文 | PVTT 适配 |
+|------|------------|----------|
+| **Reference 来源** | 生成的图片 | **真实产品照片** |
+| **Reference 状态** | 动态（参与 denoising） | **静态（fixed features）** |
+| **K, V 提取时机** | 每个 step 动态提取 | **预提取（t=0，一次性）** |
+| **Feature 类型** | 带噪声（随 step 变化） | **Clean（无噪声）** |
+| **理论依据** | RefDrop 论文验证 | **借鉴 ControlNet 思路** |
+| **计算成本** | 高（batch +1，每 step forward） | **低（预计算一次）** |
+
+### 核心设计决策
+
+**1. 为什么用 Clean Image + Fixed Features？**
+- ✅ 符合 PVTT 需求（产品图片应提供精确外观）
+- ✅ 有成功先例（ControlNet, IP-Adapter）
+- ✅ 简单高效（一次提取，多次复用）
+- ✅ RefDrop 论文将"支持 clean image"列为 future work
+
+**2. 为什么固定 t=0？**
+- ✅ 产品图片不应加噪声
+- ✅ Clean features 保留最多细节
+- ✅ 符合直觉
+
+**3. 为什么 c=0.2？**
+- ✅ RefDrop 论文推荐值（video generation）
+- ✅ 平衡外观保真度和运动保持
+- ✅ 可以根据效果调整（0.1-0.5）
+
+### 关键公式（保持不变）
+
+```
+X' = c · Attention(Q, K_ref, V_ref) + (1-c) · Attention(Q, K, V)
+```
+
+**其中：**
+- K_ref, V_ref：从 clean product image 提取（t=0），所有 step 共用
+- c = 0.2：video generation 推荐值
+- 线性插值，不是拼接
+
+### 实现要点
+
+```python
+# 1. 预处理（一次性）
+ref_bank = extract_clean_reference_features(
+    product_image=target_image,
+    vae=vae,
+    transformer=transformer,
+    ...
+)  # 在 t=0 提取
+
+# 2. 注册 Processor
+register_attention_processor(
+    transformer,
+    processor_type="CleanReferenceAttentionProcessor",
+    ref_bank=ref_bank,
+    c=0.2
+)
+
+# 3. 正常生成（processor 自动应用）
+output = flowalign(...)
+```
+
+### 潜在风险与对策
+
+**风险 1：Feature Domain Mismatch**
+- 问题：Clean features (t=0) vs Noisy latents (t>0)
+- 对策：实验验证，如有问题可尝试 timestep-adaptive
+
+**风险 2：与 RefDrop 原文偏离**
+- 问题：我们的方案不是 RefDrop 原文
+- 对策：在论文中明确说明是"适配版本"，引用 ControlNet 作为理论支持
+
+**风险 3：效果可能不如预期**
+- 对策：参数调优（c, layer selection），实验验证
+
+---
+
+**Status:** Design Complete (PVTT Adaptation)
 **Next:** Implementation
 **ETA:** Phase 1 可在 1-2 天内完成
