@@ -91,10 +91,10 @@ pvtt/
 
 | 文档 | 说明 |
 |------|------|
-| [周报](docs/reports/) | 每周实验进展 |
+| [实验运行指南](docs/running-experiments.md) | 如何运行各个脚本 |
 | [Flow Matching Inversion 方案](docs/design/rf-inversion-ti2v.md) | 技术设计文档 |
+| [周报](docs/reports/) | 每周实验进展 |
 | [实验结果](experiments/README.md) | 实验配置与结果 |
-| [研究计划](docs/research-plan.md) | 目标与时间表 |
 
 ## 目标会议
 
