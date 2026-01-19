@@ -74,12 +74,12 @@ latent = (1. - mask2[0]) * z[0] + mask2[0] * noise
 # 4. 去噪循环
 for t in timesteps:  # t: 1 → 0 (sigma_max → sigma_min)
     # CFG
-    noise_pred_cond = model(latent, t, context)
-    noise_pred_uncond = model(latent, t, context_null)
-    noise_pred = uncond + scale * (cond - uncond)
+    v_cond = model(latent, t, context)
+    v_uncond = model(latent, t, context_null)
+    v = v_uncond + scale * (v_cond - v_uncond)
 
     # ODE step
-    latent = scheduler.step(noise_pred, t, latent)
+    latent = scheduler.step(v, t, latent)
 
     # 保持首帧固定
     latent = (1. - mask2[0]) * z[0] + mask2[0] * latent
@@ -159,13 +159,12 @@ Scheduler 中的关键变量：
 #### 1. Timesteps 翻转
 
 ```python
-# 正常去噪
+# 正常去噪: sigmas 从大到小
 sigmas = get_sampling_sigmas(sampling_steps, shift)  # [sigma_max, ..., sigma_min]
-timesteps = sigmas * num_train_timesteps
 
-# Inversion
+# Inversion: sigmas 从小到大（翻转）
 sigmas_inv = np.flip(sigmas)  # [sigma_min, ..., sigma_max]
-timesteps_inv = sigmas_inv * num_train_timesteps
+scheduler.set_timesteps(sigmas=sigmas_inv)
 ```
 
 #### 2. ODE Step 方向
