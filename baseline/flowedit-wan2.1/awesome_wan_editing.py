@@ -1,4 +1,6 @@
 # 1) define
+import sys
+sys.path.insert(0, "./diffusers/src")
 import os
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 

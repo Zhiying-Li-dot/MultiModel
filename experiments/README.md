@@ -195,16 +195,192 @@ flowedit:
 - [x] 给 FlowEdit 添加 RefDrop 支持
 - [x] 尝试更小的 c 值（0.05, 0.1）
 - [x] 尝试 Noisy RefDrop（结果：无显著提升）
+- [x] 尝试组合式方法（Flux.2 + TI2V）
 - [ ] 在更多样本上验证 c=0.05 的效果
 - [ ] 考虑自适应 c 值（不同层/timestep 使用不同 c）
 - [ ] 考虑替代方案：注入 cross-attention 而非 self-attention
 - [ ] 研究 IP-Adapter / ControlNet 等其他图像条件方法
+
+## 组合式方法实验 (Flux.2 + TI2V)
+
+### 方法概述
+
+放弃端到端 Training-Free 方法，改用两阶段组合式方法：
+
+```
+模板视频第一帧 ──┐
+                ├──▶ Flux.2 Dev Edit ──▶ 目标第一帧 ──▶ Wan2.1 TI2V ──▶ 目标视频
+目标产品图片 ───┘
+```
+
+| 阶段 | 模型 | 任务 |
+|------|------|------|
+| Stage 1 | Flux.2 Dev (32B) | 多图编辑：替换产品，保持场景 |
+| Stage 2 | Wan2.1 I2V (14B) | 从第一帧生成视频 |
+
+### 实验结果
+
+**测试用例**：bracelet → pearl necklace
+
+| 阶段 | 结果 | 文件 |
+|------|------|------|
+| Stage 1 | ✅ 产品替换成功，场景保持 | `target_frame1.png` |
+| Stage 2 v1 | ❌ 运动不对（generic motion） | `target_video.mp4` |
+| Stage 2 v2 | ✅ 运动方向正确 | `target_video_v2.mp4` |
+
+**对比视频**: `comparison_3way.avi` (Original | Target Product | Generated)
+
+### Stage 1 效果评估
+
+**Flux.2 Dev 多图编辑能力很强**：
+- 成功将手环替换为珍珠项链
+- 保持了紫色丝绸背景、心形装饰、玻璃容器等场景元素
+- 光照和阴影自然
+- 产品细节（珍珠、金链）清晰
+
+### Stage 2 问题分析
+
+**v1 问题**：使用 generic prompt，生成了随机运动
+
+**v2 改进**：分析原视频运动模式，写精确的 motion prompt
+```
+The camera slowly orbits from a top-down angle to a frontal eye-level view,
+revealing the jewelry from different perspectives. Smooth cinematic arc movement.
+```
+
+**v2 结果**：
+- ✅ 运动方向正确（俯视 → 平视的弧形运动）
+- ❌ 背景物品位置随时间变化不准确（白色花瓶、玻璃容器位置偏移）
+- ❌ 光照变化不准确
+
+**根本原因**：TI2V 只参考第一帧，无法获取原视频后续帧的信息
+
+### 结论
+
+| 优点 | 缺点 |
+|------|------|
+| Stage 1 产品替换效果很好 | Stage 2 无法参考原视频后续帧 |
+| 语义正确（产品 + 运动方向） | 背景物品/光照随时间变化不准确 |
+| 两阶段可分别调试 | 需要手写 motion prompt |
+
+### 潜在改进方向
+
+1. **提取原视频运动信息**：光流、相机轨迹作为 TI2V 条件
+2. **逐帧编辑**：对每帧用 Flux.2 编辑，保持时序一致性
+3. **混合方法**：Stage 1 生成第一帧 + FlowEdit 做视频编辑
+4. **Motion ControlNet**：用原视频运动作为控制信号
+
+## 混合方法对比实验 (Pure FlowEdit vs Flux+TI2V)
+
+### 实验设计
+
+对比两种方法在相同 prompt 下的效果：
+
+| 方法 | 描述 |
+|------|------|
+| Pure FlowEdit | 使用与 Flux.2 生成帧匹配的 prompt，纯文本引导编辑 |
+| Flux.2 + TI2V | 两阶段：Flux.2 生成第一帧 → TI2V 生成视频 |
+
+**Target Prompt**: `A gold chain necklace with white pearl drop pendants and red gemstone accents placed on purple silk fabric.`
+
+### 实验结果
+
+| 方法 | 产品替换 | 运动保持 | 背景一致性 | 结果文件 |
+|------|---------|---------|-----------|---------|
+| Pure FlowEdit | ⚠️ 一般 | ✅ 完美保持 | ✅ 完美保持 | test02_pure_flowedit_pearl.mp4 |
+| **Flux.2 + TI2V** | ✅ 最佳 | ✅ 运动正确 | ⚠️ 轻微漂移 | target_video_v2.mp4 |
+
+**对比视频**: `comparison_4way.avi` (2x2 grid: Original | Flux.2 Frame | Pure FlowEdit | Flux+TI2V)
+
+### 结论
+
+**Flux.2 + TI2V 组合方法产品替换效果最佳**：
+- Flux.2 图像编辑能力强，产品替换质量高
+- TI2V 从高质量首帧生成视频
+- 背景有轻微漂移，但产品本身效果最好
+
+**关键发现**：
+- 组合方法（Flux.2 + TI2V）在产品替换场景优于端到端方法
+- Prompt engineering 是关键：prompt 必须准确描述目标产品
+- Pure FlowEdit 保持背景好，但产品替换效果不如组合方法
+
+## TI2V FlowEdit 实验 (2026-01-12)
+
+### 方法概述
+
+尝试将 FlowEdit 算法与 Wan2.2 TI2V-5B 模型结合，利用首帧条件引导视频编辑。
+
+**FlowEdit 2-Branch 结构**：
+```
+Source: Vt_src = CFG(V(Zt_src, source_prompt, source_first_frame))
+Target: Vt_tar = CFG(V(Zt_tar, target_prompt, target_first_frame))
+Update: Zt_edit += dt * (Vt_tar - Vt_src)
+```
+
+**与 FlowAlign 3-Branch 的区别**：
+- FlowEdit: 2个分支，source 和 target 各自独立 CFG
+- FlowAlign: 3个分支 (vq_source, vp_source, vp_target)，使用 zeta_scale 正则化
+
+### 实验配置
+
+| 参数 | 值 |
+|------|-----|
+| 模型 | Wan2.2-TI2V-5B |
+| 源视频 | bracelet_shot1.mp4 (1280x1024, 49帧) |
+| 目标首帧 | target_frame1.png (Flux.2 生成) |
+| 输出分辨率 | 1056x832 (best_output_size) |
+| Steps | 50 |
+| Strength | 0.7 |
+| Source/Target CFG | 5.0 |
+
+### 实验结果
+
+| 版本 | 分辨率 | 结果 | 文件 |
+|------|--------|------|------|
+| v1 (480p) | 832x480 | ❌ 模糊 | ti2v_flowedit_480p.mp4 |
+| v2 (highres) | 1056x832 | ❌ 错误 | ti2v_flowedit_highres.mp4 |
+
+**参考对比**：
+- wan22_flowalign.mp4 (1056x832) - FlowAlign 3-branch，效果正确
+
+### 问题分析
+
+TI2V FlowEdit 结果错误，可能原因：
+
+1. **FlowEdit vs FlowAlign 算法差异**
+   - FlowEdit 直接用速度差 (Vt_tar - Vt_src) 更新
+   - FlowAlign 有额外的 zeta_scale 一致性正则化项
+   - TI2V 模式可能需要 FlowAlign 的正则化
+
+2. **首帧条件处理**
+   - Source 分支用 source_first_frame 条件
+   - Target 分支用 target_first_frame 条件
+   - 两个不同的首帧条件可能导致不一致
+
+3. **CFG 设置**
+   - 当前 source_cfg = target_cfg = 5.0
+   - 可能需要不同的 CFG 配比
+
+### 代码位置
+
+- 实现：`baseline/compositional-flux-ti2v/scripts/ti2v_flowedit.py`
+- 参考：`baseline/flowedit-wan2.2/flowalign_ti2v.py`
+
+### 下一步
+
+- [ ] 分析 FlowAlign 为什么有效，FlowEdit 为什么失败
+- [ ] 尝试在 FlowEdit 中加入 zeta_scale 正则化
+- [ ] 尝试不同的首帧条件组合
+- [ ] 对比 T2V 模式下的 FlowEdit（无首帧条件）
+
+---
 
 ## 实验分析
 
 ### 下一步计划
 - [ ] 完成更多样本对的测试
 - [x] 对比 FlowAlign vs FlowEdit
+- [x] TI2V FlowEdit 实验（结果：失败）
 - [ ] 计算定量指标（CLIP-score, FVD等）
 - [ ] 用户研究评估
 - [ ] 实现我们的改进方法

@@ -58,6 +58,8 @@ def flowedit_t2v(
     offload_model=True,
     device="cuda",
     param_dtype=torch.bfloat16,
+    target_width=None,
+    target_height=None,
 ):
     """
     FlowEdit/FlowAlign for video editing using Wan2.2 TI2V-5B in T2V mode.
@@ -95,10 +97,15 @@ def flowedit_t2v(
     source_first = source_video[0]
     ih, iw = source_first.height, source_first.width
     dh, dw = patch_size[1] * vae_stride[1], patch_size[2] * vae_stride[2]
-    # Keep original resolution (align to patch_size * vae_stride)
-    ow = (iw // dw) * dw
-    oh = (ih // dh) * dh
-    print(f"Output size: {ow}x{oh} (original: {iw}x{ih})")
+    # Use forced resolution or align to patch_size * vae_stride
+    if target_width and target_height:
+        ow = (target_width // dw) * dw
+        oh = (target_height // dh) * dh
+        print(f"Output size: {ow}x{oh} (forced)")
+    else:
+        ow = (iw // dw) * dw
+        oh = (ih // dh) * dh
+        print(f"Output size: {ow}x{oh} (original: {iw}x{ih})")
 
     # Limit frames
     F = min(frame_num, len(source_video))
@@ -129,6 +136,7 @@ def flowedit_t2v(
     text_encoder.model.to(device)
     context_source = text_encoder([source_prompt], device)
     context_target = text_encoder([target_prompt], device)
+    context_negative = text_encoder([""], device)  # negative prompt for CFG
     if offload_model:
         text_encoder.model.cpu()
         torch.cuda.empty_cache()
@@ -156,6 +164,13 @@ def flowedit_t2v(
     # Initialize edit latent from source
     Zt_edit = X0_src.clone()
 
+    # Set random seed for reproducibility and enable deterministic mode
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
     # Move model to GPU
     if offload_model:
         model.to(device)
@@ -177,11 +192,12 @@ def flowedit_t2v(
             if method == "flowedit":
                 # FlowEdit: batch [Zt_src, Zt_tar] with CFG for both
                 # Need 4 forward passes: src_uncond, tar_uncond, src_cond, tar_cond
+                # Use negative prompt (empty string) for uncond, actual prompts for cond
                 concat_context = [
-                    context_source[0],  # src uncond (use source as "uncond")
-                    context_source[0],  # tar uncond
-                    context_source[0],  # src cond
-                    context_target[0],  # tar cond
+                    context_negative[0],  # src uncond (negative prompt)
+                    context_negative[0],  # tar uncond (negative prompt)
+                    context_source[0],    # src cond (source prompt)
+                    context_target[0],    # tar cond (target prompt)
                 ]
                 timestep = t.expand(seq_len).unsqueeze(0).expand(4, -1)
 
@@ -261,6 +277,8 @@ def main():
     parser.add_argument("--zeta_scale", type=float, default=0.001, help="Structure preservation scale (flowalign only)")
     parser.add_argument("--steps", type=int, default=50, help="Number of sampling steps")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
+    parser.add_argument("--width", type=int, default=None, help="Force output width")
+    parser.add_argument("--height", type=int, default=None, help="Force output height")
     args = parser.parse_args()
 
     # Set default guidance scale based on method
@@ -311,6 +329,8 @@ def main():
         offload_model=True,
         device=device,
         param_dtype=config.param_dtype,
+        target_width=args.width,
+        target_height=args.height,
     )
 
     os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)

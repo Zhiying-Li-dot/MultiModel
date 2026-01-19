@@ -1,0 +1,31 @@
+# PVTT Test: Bracelet to Necklace
+# 组合式方法：Flux.2 Dev Edit + Wan2.1 TI2V
+
+template:
+  video_path: ../flowedit-wan2.1/videos/bracelet_shot1.mp4
+  source_object: "two personalized couple bracelets, one silver and one black"
+  source_prompt: "Two personalized couple bracelets, one silver and one black, placed on a purple silk fabric with decorative stones."
+
+product:
+  image_path: ../../data/pvtt-benchmark/images/jewelry/JEWE005_source.jpg
+  target_object: "a gold chain necklace with white pearl drop pendants and red gemstone accents"
+  target_prompt: "A gold chain necklace with white pearl drop pendants and red gemstone accents placed on a purple silk fabric with decorative stones."
+
+output:
+  first_frame: ./results/bracelet_to_necklace_frame1.png
+  video: ./results/bracelet_to_necklace.mp4
+
+# Stage 1: Flux.2 Dev Edit 参数
+flux_edit:
+  guidance_scale: 3.5
+  num_inference_steps: 28
+  width: 832
+  height: 480
+
+# Stage 2: Wan2.1 TI2V 参数
+ti2v:
+  model_id: Wan-AI/Wan2.1-I2V-14B-480P-Diffusers
+  num_frames: 49
+  num_inference_steps: 50
+  guidance_scale: 5.0
+  motion_prompt: "The jewelry rests elegantly on flowing purple silk fabric with subtle movement. Camera slowly zooms in. Professional product photography with soft studio lighting."

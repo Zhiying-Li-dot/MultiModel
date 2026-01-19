@@ -1,0 +1,33 @@
+# PVTT Hybrid Method Test: Pure FlowEdit with Flux.2 matching prompt
+# Source: bracelet video -> Target: pearl necklace (matching Flux.2 generated frame)
+# NO RefDrop/Reference Attention
+
+video:
+    video_path: ./videos/bracelet_shot1.mp4
+    source_prompt: Two personalized couple bracelets, one silver and one black, placed on a purple silk fabric with decorative stones.
+    target_prompt: A gold chain necklace with white pearl drop pendants and red gemstone accents placed on purple silk fabric. The elegant jewelry rests on decorative stones with a glass container in the background.
+    source_blend: bracelets
+    target_blend: necklace
+
+infernece:
+    num_inference_step: 50
+
+training-free-type:
+    flag_flowedit: True
+    flag_flowalign: False
+
+flowedit:
+    strength: 0.7
+    target_guidance_scale: 13.5
+    source_guidance_scale: 5.0
+    save_video: ./results/pvtt/test02_pure_flowedit_pearl.mp4
+    # No reference attention
+    use_reference_attention: False
+
+flowalign:
+    strength: 0.7
+    target_guidance_scale: 19.5
+    flag_attnmask: True
+    zeta_scale: 1e-3
+    bg_zeta_scale: 1e-3
+    save_video: ./results/pvtt/flowalign_bracelet_to_necklace.mp4
