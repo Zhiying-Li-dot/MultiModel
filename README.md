@@ -12,65 +12,89 @@
 - 新产品的推广视频
 - 保持模板的视觉风格和动态结构
 
+## 当前最佳方案
+
+**Flux.2 + TI2V 两阶段组合方法**
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ Stage 1: Flux.2 图像编辑                                         │
+│   源视频首帧 + 产品图片 → 目标首帧（产品替换）                      │
+├─────────────────────────────────────────────────────────────────┤
+│ Stage 2: Wan2.2 TI2V                                            │
+│   目标首帧 + prompt → 目标视频                                    │
+└─────────────────────────────────────────────────────────────────┘
+```
+
 ## 项目结构
 
 ```
 pvtt/
-├── baseline/                    # Baseline 实现
-│   ├── flowedit-wan2.1/         # Wan2.1 T2V-1.3B (FlowEdit/FlowAlign/WANAlign)
-│   └── flowedit-wan2.2/         # Wan2.2 TI2V-5B (FlowEdit/FlowAlign)
-├── data/                        # 数据集
-│   └── samples/                 # 样例数据
-├── src/                         # 源代码
-├── experiments/                 # 实验记录
-│   ├── README.md                # 实验结果汇总
-│   └── results/                 # 实验输出
-│       ├── flowedit-wan2.1/     # Wan2.1 结果
-│       └── flowedit-wan2.2/     # Wan2.2 结果
-└── docs/                        # 文档
-    ├── research-plan.md         # 研究计划
-    ├── literature-review.md     # 文献综述
-    └── baseline-design.md       # Baseline 设计
+├── baseline/
+│   ├── flowedit-wan2.1/          # Wan2.1 T2V-1.3B (FlowEdit/FlowAlign)
+│   ├── flowedit-wan2.2/          # Wan2.2 TI2V-5B (FlowEdit/FlowAlign)
+│   └── compositional-flux-ti2v/  # ⭐ Flux.2 + TI2V 组合方法
+├── data/samples/                 # 样例数据
+├── experiments/
+│   ├── README.md                 # 实验结果汇总
+│   └── results/                  # 实验输出
+├── docs/
+│   ├── design/                   # 技术方案
+│   │   └── rf-inversion-ti2v.md  # Flow Matching Inversion 方案
+│   ├── reports/                  # 周报
+│   ├── research-plan.md          # 研究计划
+│   └── literature-review.md      # 文献综述
+└── scripts/                      # 工具脚本
 ```
 
 ## 研究进度
 
-- [x] 调研相关工作
-  - [x] DreamSwapV (2025)
-  - [x] VideoSwap (CVPR 2024)
-  - [x] MotionBooth (NeurIPS 2024)
-- [x] 收集模板视频样例
+- [x] 调研相关工作 (DreamSwapV, VideoSwap, MotionBooth)
 - [x] Baseline 实验
-  - [x] 4-Way Comparison: FlowEdit/FlowAlign × Wan2.1/Wan2.2
-  - ✅ 产品替换成功
-  - ⚠️ 时序一致性问题
-  - ⚠️ 细节清晰度不足
-- [ ] 设计 PVTT 技术方案
+  - [x] FlowEdit/FlowAlign × Wan2.1/Wan2.2 对比
+  - [x] RefDrop 图像条件方案（失败：与 self-attention 编辑机制冲突）
+  - [x] **Flux.2 + TI2V 组合方法**（成功：产品替换效果好）
+- [x] TI2V + FlowEdit 实验
+  - [x] 修复 CFG bug（必须用空字符串作 negative prompt）
+  - [x] 验证 ti2v_flowedit.py 与 flowalign_t2v.py 像素级一致
+  - [x] 分析 Inversion-Free 根本问题
+- [x] 设计 Flow Matching Inversion + TI2V 方案
+- [ ] 实现 Flow Matching Inversion + TI2V
 - [ ] 数据集构建
-- [ ] 完整实验
 - [ ] 论文写作
+
+## 关键实验结论
+
+| 结论 | 说明 |
+|------|------|
+| Flux.2 + TI2V 目前最佳 | 产品替换效果好，首帧质量高 |
+| Wan2.1 ≈ Wan2.2 | 相同算法下效果相近 |
+| FlowAlign > FlowEdit | 3-branch 编辑效果强于 2-branch |
+| TI2V + FlowEdit 图像条件失败 | Inversion-Free 导致后续帧退化 |
+
+## 技术方案
+
+| 方案 | 状态 | 说明 |
+|------|------|------|
+| [Flux.2 + TI2V](baseline/compositional-flux-ti2v/) | ✅ 完成 | 当前最佳，两阶段组合 |
+| [Flow Matching Inversion + TI2V](docs/design/rf-inversion-ti2v.md) | 📝 设计中 | 解决 Inversion-Free 问题 |
 
 ## Baseline 方法
 
 | 方法 | 论文 | 说明 |
 |------|------|------|
-| FlowEdit | [arXiv:2412.08629](https://arxiv.org/abs/2412.08629) | 基于 velocity 差分的视频编辑 |
-| FlowAlign | [arXiv:2505.23145](https://arxiv.org/abs/2505.23145) | FlowEdit + zeta 正则化项 |
-| WANAlign2.1 | - | FlowAlign + MasaCtrl masking |
-
-| 模型 | 参数量 | 说明 |
-|------|--------|------|
-| Wan2.1 T2V-1.3B | 1.3B | flowedit-wan2.1 |
-| Wan2.2 TI2V-5B | 5B | flowedit-wan2.2 (T2V 模式) |
+| FlowEdit | [arXiv:2412.08629](https://arxiv.org/abs/2412.08629) | Inversion-Free 视频编辑 |
+| FlowAlign | - | FlowEdit + zeta 正则化 |
+| RF-Solver | [arXiv:2411.04746](https://arxiv.org/abs/2411.04746) | Flow Matching Inversion |
 
 ## 快速链接
 
 | 文档 | 说明 |
 |------|------|
-| [研究计划](docs/research-plan.md) | 目标、时间表、阶段任务 |
-| [文献综述](docs/literature-review.md) | 论文精读、技术对比 |
-| [Baseline 设计](docs/baseline-design.md) | FlowEdit + WAN2.1 |
+| [周报](docs/reports/) | 每周实验进展 |
+| [Flow Matching Inversion 方案](docs/design/rf-inversion-ti2v.md) | 技术设计文档 |
 | [实验结果](experiments/README.md) | 实验配置与结果 |
+| [研究计划](docs/research-plan.md) | 目标与时间表 |
 
 ## 目标会议
 
