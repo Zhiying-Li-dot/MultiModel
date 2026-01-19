@@ -26,6 +26,8 @@
 └─────────────────────────────────────────────────────────────────┘
 ```
 
+详细运行方法见 **[实验运行指南](docs/running-experiments.md)**。
+
 ## 项目结构
 
 ```
@@ -39,11 +41,11 @@ pvtt/
 │   ├── README.md                 # 实验结果汇总
 │   └── results/                  # 实验输出
 ├── docs/
+│   ├── running-experiments.md    # ⭐ 实验运行指南
 │   ├── design/                   # 技术方案
 │   │   └── rf-inversion-ti2v.md  # Flow Matching Inversion 方案
 │   ├── reports/                  # 周报
-│   ├── research-plan.md          # 研究计划
-│   └── literature-review.md      # 文献综述
+│   └── research-plan.md          # 研究计划
 └── scripts/                      # 工具脚本
 ```
 
