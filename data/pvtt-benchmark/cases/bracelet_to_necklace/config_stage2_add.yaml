@@ -1,0 +1,24 @@
+# 两阶段编辑 - Stage 2: 添加项链
+# 用于 PVTT 实验
+
+case_id: bracelet_to_necklace_stage2
+description: 在空背景上添加项链
+
+# 文件路径（相对于本目录）
+files:
+  source_video: two_stage_step1_remove.mp4  # Stage 1 的输出
+  source_frame1: source_frame1.png          # Stage 1 输出的首帧（待生成）
+  target_frame1: target_frame1.png          # 832x480, Flux.2 生成的项链首帧
+
+# 分辨率
+resolution:
+  width: 832
+  height: 480
+
+# Prompts
+prompts:
+  source: "Purple silk fabric, elegant jewelry display, soft lighting"
+  target: "A gold chain necklace with white pearl pendants on purple silk fabric, elegant jewelry display, soft lighting"
+
+# 创建日期
+created: 2026-01-20
