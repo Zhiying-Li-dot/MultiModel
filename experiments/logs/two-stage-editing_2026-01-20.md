@@ -35,7 +35,19 @@ dilated = cv2.dilate(mask, kernel, iterations=1)
 
 ### 0.2 LaMa Inpainting 实验
 
-使用 LaMa (Large Mask Inpainting) 进行纹理填充式物体移除。测试了三种 mask 形状：
+使用 LaMa (Large Mask Inpainting) 进行纹理填充式物体移除。
+
+**脚本用法**：
+```bash
+python scripts/lama_inpaint.py \
+    --input $CASE_DIR/source_frame1.png \
+    --mask $CASE_DIR/bracelet_mask.png \
+    --output $CASE_DIR/empty_background_lama.png \
+    --dilate 30 \
+    --mask-mode convex  # original/bbox/convex
+```
+
+测试了三种 mask 形状：
 
 | Mask 类型 | 文件 | 说明 |
 |----------|------|------|
@@ -134,6 +146,10 @@ python scripts/ti2v_rfsolver.py \
 ---
 
 ## 相关文件
+
+### 脚本
+- Mask 生成: `baseline/compositional-flux-ti2v/scripts/generate_mask.py`
+- LaMa Inpainting: `baseline/compositional-flux-ti2v/scripts/lama_inpaint.py`
 
 ### Stage 0 (LaMa Inpainting)
 - 原始图像: `data/pvtt-benchmark/cases/bracelet_to_necklace/source_frame1.png`
