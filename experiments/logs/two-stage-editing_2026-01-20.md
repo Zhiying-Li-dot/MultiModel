@@ -33,6 +33,12 @@ kernel = np.ones((30, 30), np.uint8)
 dilated = cv2.dilate(mask, kernel, iterations=1)
 ```
 
+**输入图像与 Mask：**
+
+| 原始图像 | Mask (dilated) |
+|---------|----------------|
+| ![source](../../data/pvtt-benchmark/cases/bracelet_to_necklace/source_frame1.png) | ![mask](../../data/pvtt-benchmark/cases/bracelet_to_necklace/bracelet_mask_dilated.png) |
+
 ### 0.2 LaMa Inpainting 实验
 
 使用 LaMa (Large Mask Inpainting) 进行纹理填充式物体移除。
@@ -62,6 +68,18 @@ python scripts/lama_inpaint.py \
 | 轮廓 (dilated) | `empty_background_lama.png` | 中间区域有填充痕迹 |
 | Bounding Box | `empty_background_lama_bbox.png` | 区域过大 |
 | Convex Hull | `empty_background_lama_convex.png` | 待评估 |
+
+**三种 Mask 形状对比：**
+
+| Mask (dilated) | Mask (bbox) | Mask (convex) |
+|----------------|-------------|---------------|
+| ![dilated](../../data/pvtt-benchmark/cases/bracelet_to_necklace/bracelet_mask_dilated.png) | ![bbox](../../data/pvtt-benchmark/cases/bracelet_to_necklace/bracelet_mask_bbox.png) | ![convex](../../data/pvtt-benchmark/cases/bracelet_to_necklace/bracelet_mask_convex.png) |
+
+**LaMa 输出对比：**
+
+| LaMa (dilated) | LaMa (bbox) | LaMa (convex) |
+|----------------|-------------|---------------|
+| ![lama_dilated](../../data/pvtt-benchmark/cases/bracelet_to_necklace/empty_background_lama.png) | ![lama_bbox](../../data/pvtt-benchmark/cases/bracelet_to_necklace/empty_background_lama_bbox.png) | ![lama_convex](../../data/pvtt-benchmark/cases/bracelet_to_necklace/empty_background_lama_convex.png) |
 
 **结论**：LaMa 是纯纹理填充（不需要 prompt），适合物体移除。相比 Flux inpainting（prompt-guided，会生成新内容），LaMa 更适合"移除"场景。
 
