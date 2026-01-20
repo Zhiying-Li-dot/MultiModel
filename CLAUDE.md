@@ -58,3 +58,50 @@ flowalign:
 ## Remote Machine Access
 
 The 5090 machine has 8x RTX 5090 32GB GPUs. Use SSH alias `5090` to connect.
+
+### GPU 选择
+
+运行实验前先检查 GPU 占用情况，**优先选择空闲的 GPU**：
+
+```bash
+# 查看 GPU 显存占用
+ssh 5090 'nvidia-smi --query-gpu=index,memory.free,memory.total --format=csv'
+
+# 使用 CUDA_VISIBLE_DEVICES 指定空闲 GPU
+export CUDA_VISIBLE_DEVICES=2  # 选择显存充足的 GPU
+```
+
+## Important: Experiment File Paths
+
+**在运行实验之前，必须先查阅配置文件或实验日志获取正确的文件路径！**
+
+- 测试用例数据统一存放在 `data/pvtt-benchmark/cases/{case_name}/`
+- 每个 case 包含：`source_video.mp4`, `target_frame1.png`, `config.yaml`
+- **不要**自己去 `find` 或猜测文件路径
+- **优先**查阅：
+  1. `baseline/compositional-flux-ti2v/config/{case_name}.yaml`
+  2. `experiments/logs/` 中的实验日志记录的命令
+
+示例（bracelet_to_necklace）：
+```bash
+CASE_DIR=~/pvtt/data/pvtt-benchmark/cases/bracelet_to_necklace
+python scripts/ti2v_rfsolver.py \
+    --source-video $CASE_DIR/source_video.mp4 \
+    --target-frame $CASE_DIR/target_frame1.png \
+    --width 832 --height 480 \
+    ...
+```
+
+## 实验评估注意事项
+
+### std 不是可靠的质量指标
+
+- **不要**只看 inverted noise 的 std 是否接近 1.0
+- std 接近 1.0 不代表视觉质量好（实验证明 33-49 帧 std 最接近 1.0 但质量最差）
+- **必须**打开视频查看实际视觉质量
+
+### 视觉质量判断要谨慎
+
+- 不要轻易下"效果好"或"效果差"的结论
+- 对比多个帧（不只是第一帧）
+- 有疑问时让用户自己判断

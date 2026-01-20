@@ -49,11 +49,11 @@ data/products/*.jpg
 # Experiment results (videos are large)
 experiments/results/**/*.mp4
 experiments/results/**/*.avi
-experiments/logs/
 baseline/**/results/
 
 # Logs
 logs/
+!experiments/logs/
 *.log
 wandb/
 tensorboard/

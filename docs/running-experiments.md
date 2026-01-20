@@ -21,57 +21,57 @@ conda activate wan
 ~/.conda/envs/wan/bin/python
 ```
 
-### 本地环境
+---
 
-图像编辑任务（Flux.2）可在本地运行，需要 FAL API：
+## 标准化案例数据
 
-```bash
-pip install fal-client pillow
+实验使用标准化的案例数据，位于 `data/pvtt-benchmark/cases/` 目录：
 
-# 设置 API Key
-export FAL_KEY="your-fal-api-key"
+```
+data/pvtt-benchmark/cases/bracelet_to_necklace/
+├── config.yaml          # 配置和 prompts
+├── source_video.mp4     # 原视频 (832x480, 25帧)
+├── source_frame1.png    # 原视频首帧
+├── target_frame1.png    # 目标首帧 (Flux.2 生成)
+└── product_image.jpg    # 产品参考图（项链）
+```
+
+**config.yaml 内容：**
+
+```yaml
+prompts:
+  source: "A black leather bracelet and silver chain bracelet on purple silk fabric, elegant jewelry display, soft lighting"
+  target: "A gold chain necklace with white pearl pendants on purple silk fabric, elegant jewelry display, soft lighting"
+
+flux_edit:
+  source_object: "black leather bracelet and silver chain bracelet"
+  target_object: "gold chain necklace with pearl pendants"
+
+resolution:
+  width: 832
+  height: 480
 ```
 
 ---
 
 ## 方法一：Flux.2 + TI2V 组合方法（当前最佳）
 
-### 完整 Pipeline
+使用已准备好的标准化案例数据：
 
 ```bash
-cd ~/pvtt/baseline/compositional-flux-ti2v
-python run_pipeline.py --config config/bracelet_to_necklace.yaml
+# 案例数据路径
+CASE_DIR=~/pvtt/data/pvtt-benchmark/cases/bracelet_to_necklace
 ```
 
-### 分步运行
-
-**Step 1: 提取模板视频首帧**
-
-```bash
-python scripts/extract_frame.py \
-    --video ../../data/videos/bracelet_shot1.mp4 \
-    --output ./inputs/bracelet_frame1.png
-```
-
-**Step 2: Flux.2 图像编辑（本地）**
-
-```bash
-python scripts/flux_edit.py \
-    --template-frame ./inputs/bracelet_frame1.png \
-    --product-image ../../data/images/necklace.jpg \
-    --source-object "bracelets" \
-    --target-object "gold necklace with pearls" \
-    --output ./results/target_frame1.png
-```
-
-**Step 3: TI2V 视频生成（5090 服务器）**
+**Step 1: TI2V 视频生成（5090 服务器）**
 
 ```bash
 ssh 5090
+CASE_DIR=~/pvtt/data/pvtt-benchmark/cases/bracelet_to_necklace
 cd ~/pvtt/baseline/compositional-flux-ti2v
 ~/.conda/envs/wan/bin/python scripts/ti2v_generate.py \
-    --first-frame ./results/target_frame1.png \
-    --prompt "A gold necklace with pearls on purple silk, elegant jewelry display" \
+    --first-frame $CASE_DIR/target_frame1.png \
+    --prompt "A gold chain necklace with white pearl pendants on purple silk fabric, elegant jewelry display, soft lighting" \
     --output ./results/target_video.mp4
 ```
 
@@ -129,7 +129,41 @@ flowalign:
 
 ---
 
-## 方法三：TI2V + FlowEdit（Wan2.2）
+## 方法三：RF-Solver + TI2V（实验性）
+
+使用 RF-Solver（二阶 Taylor 展开）进行更精确的 Flow Matching Inversion。
+
+> **重要**：分辨率对齐至关重要！源视频、目标首帧必须使用相同分辨率，否则后续帧会严重退化。
+>
+> 参考论文：[Taming Rectified Flow for Inversion and Editing](https://arxiv.org/abs/2411.04746) (ICML 2025)
+
+```bash
+ssh 5090
+CASE_DIR=~/pvtt/data/pvtt-benchmark/cases/bracelet_to_necklace
+cd ~/pvtt/baseline/compositional-flux-ti2v
+~/.conda/envs/wan/bin/python scripts/ti2v_rfsolver.py \
+    --checkpoint-dir /data/xuhao/Wan2.2/Wan2.2-TI2V-5B \
+    --source-video $CASE_DIR/source_video.mp4 \
+    --source-prompt "A black leather bracelet and silver chain bracelet on purple silk fabric, elegant jewelry display, soft lighting" \
+    --target-prompt "A gold chain necklace with white pearl pendants on purple silk fabric, elegant jewelry display, soft lighting" \
+    --target-frame $CASE_DIR/target_frame1.png \
+    --output ./results/ti2v_rfsolver.mp4 \
+    --width 832 --height 480 \
+    --steps 50 --cfg 5.0 --shift 5.0
+```
+
+技术原理见 [Flow Matching Inversion 方案](design/rf-inversion-ti2v.md)。
+
+### Euler vs RF-Solver 对比
+
+| 方法 | Inverted noise std | 后续帧质量 |
+|------|-------------------|-----------|
+| Euler (一阶) | 0.77 | 退化严重 |
+| RF-Solver (二阶) | 0.82 (更接近1.0) | 明显改善 |
+
+---
+
+## 方法四：TI2V + FlowEdit（实验性）
 
 ### 无图像条件（等同于 Wan2.1 FlowEdit）
 
@@ -140,20 +174,21 @@ cd ~/pvtt/baseline/flowedit-wan2.2
     --config ../flowedit-wan2.1/config/pvtt/bracelet_flowedit.yaml
 ```
 
-### 有图像条件（实验性，后续帧会退化）
+### 有图像条件（已知问题：后续帧退化）
 
 ```bash
+CASE_DIR=~/pvtt/data/pvtt-benchmark/cases/bracelet_to_necklace
 cd ~/pvtt/baseline/compositional-flux-ti2v
 ~/.conda/envs/wan/bin/python scripts/ti2v_flowedit.py \
-    --source-video ../../data/videos/bracelet_shot1.mp4 \
-    --source-prompt "A woman's hand wearing beaded bracelets..." \
-    --target-prompt "A woman's hand wearing a pearl necklace..." \
-    --target-first-frame ./results/target_frame1.png \
-    --output ./results/ti2v_flowedit.mp4 \
-    --use-image-cond
+    --checkpoint-dir /data/xuhao/Wan2.2/Wan2.2-TI2V-5B \
+    --source-video $CASE_DIR/source_video.mp4 \
+    --source-prompt "A black leather bracelet and silver chain bracelet on purple silk fabric, elegant jewelry display, soft lighting" \
+    --target-prompt "A gold chain necklace with white pearl pendants on purple silk fabric, elegant jewelry display, soft lighting" \
+    --target-frame $CASE_DIR/target_frame1.png \
+    --output ./results/ti2v_flowedit.mp4
 ```
 
-> **注意**：有图像条件模式存在理论问题（Inversion-Free 导致后续帧退化），仅供实验验证。
+> **注意**：有图像条件模式存在理论问题（Inversion-Free 导致后续帧退化），建议使用方法三。
 
 ---
 
@@ -204,7 +239,8 @@ export HF_ENDPOINT=https://hf-mirror.com
 
 5090 服务器上的模型位置：
 - Wan2.1: `~/.cache/huggingface/hub/models--Wan-AI--Wan2.1-T2V-1.3B`
-- Wan2.2: `/data/xuhao/Wan2.2/`
+- Wan2.2 TI2V-5B: `/data/xuhao/Wan2.2/Wan2.2-TI2V-5B/`
+- Flux.2 Dev: 自动从 HuggingFace 下载（需设置 HF_ENDPOINT 镜像）
 
 ---
 
