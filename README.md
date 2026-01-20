@@ -36,14 +36,19 @@ pvtt/
 │   ├── flowedit-wan2.1/          # Wan2.1 T2V-1.3B (FlowEdit/FlowAlign)
 │   ├── flowedit-wan2.2/          # Wan2.2 TI2V-5B (FlowEdit/FlowAlign)
 │   └── compositional-flux-ti2v/  # ⭐ Flux.2 + TI2V 组合方法
-├── data/samples/                 # 样例数据
+│       └── scripts/
+│           └── ti2v_rfsolver.py  # ⭐ RF-Solver Inversion + TI2V
+├── data/
+│   ├── samples/                  # 样例数据
+│   └── pvtt-benchmark/           # ⭐ 标准化测试用例
+│       └── cases/{case_name}/    # source_video.mp4, target_frame1.png, config.yaml
 ├── experiments/
-│   ├── README.md                 # 实验结果汇总
+│   ├── README.md                 # 实验索引
+│   ├── logs/                     # ⭐ 实验日志 (主题_日期.md)
 │   └── results/                  # 实验输出
 ├── docs/
 │   ├── running-experiments.md    # ⭐ 实验运行指南
 │   ├── design/                   # 技术方案
-│   │   └── rf-inversion-ti2v.md  # Flow Matching Inversion 方案
 │   ├── reports/                  # 周报
 │   └── research-plan.md          # 研究计划
 └── scripts/                      # 工具脚本
@@ -61,7 +66,9 @@ pvtt/
   - [x] 验证 ti2v_flowedit.py 与 flowalign_t2v.py 像素级一致
   - [x] 分析 Inversion-Free 根本问题
 - [x] 设计 Flow Matching Inversion + TI2V 方案
-- [ ] 实现 Flow Matching Inversion + TI2V
+- [x] 实现 RF-Solver Inversion + TI2V
+  - [x] shift 参数消融：**shift=0.5 最佳**
+  - [x] 帧数消融：发现 **33-49 帧是"坏区间"**，17-25 帧和 81 帧效果好
 - [ ] 数据集构建
 - [ ] 论文写作
 
@@ -70,7 +77,9 @@ pvtt/
 | 结论 | 说明 |
 |------|------|
 | Flux.2 + TI2V 目前最佳 | 产品替换效果好，首帧质量高 |
-| Wan2.1 ≈ Wan2.2 | 相同算法下效果相近 |
+| RF-Solver shift=0.5 最佳 | 比默认 shift=5.0 效果好很多 |
+| 33-49 帧是"坏区间" | 17-25 帧和 81 帧效果好，33-49 帧质量差 |
+| std ≠ 视觉质量 | std 接近 1.0 不代表视觉质量好 |
 | FlowAlign > FlowEdit | 3-branch 编辑效果强于 2-branch |
 | TI2V + FlowEdit 图像条件失败 | Inversion-Free 导致后续帧退化 |
 
@@ -79,7 +88,7 @@ pvtt/
 | 方案 | 状态 | 说明 |
 |------|------|------|
 | [Flux.2 + TI2V](baseline/compositional-flux-ti2v/) | ✅ 完成 | 当前最佳，两阶段组合 |
-| [Flow Matching Inversion + TI2V](docs/design/rf-inversion-ti2v.md) | 📝 设计中 | 解决 Inversion-Free 问题 |
+| [RF-Solver Inversion + TI2V](baseline/compositional-flux-ti2v/scripts/ti2v_rfsolver.py) | ✅ 完成 | 二阶 inversion，shift=0.5 |
 
 ## Baseline 方法
 
