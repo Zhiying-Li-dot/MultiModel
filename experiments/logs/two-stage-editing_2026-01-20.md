@@ -81,7 +81,33 @@ python scripts/lama_inpaint.py \
 |----------------|-------------|---------------|
 | ![lama_dilated](../../data/pvtt-benchmark/cases/bracelet_to_necklace/empty_background_lama.png) | ![lama_bbox](../../data/pvtt-benchmark/cases/bracelet_to_necklace/empty_background_lama_bbox.png) | ![lama_convex](../../data/pvtt-benchmark/cases/bracelet_to_necklace/empty_background_lama_convex.png) |
 
-**结论**：LaMa 是纯纹理填充（不需要 prompt），适合物体移除。相比 Flux inpainting（prompt-guided，会生成新内容），LaMa 更适合"移除"场景。
+### 0.3 Flux Fill 尝试（失败）
+
+尝试使用 FluxFillPipeline 进行物体移除：
+
+```python
+pipe = FluxFillPipeline.from_pretrained("black-forest-labs/FLUX.1-Fill-dev")
+result = pipe(
+    prompt="empty purple silk fabric, plain background, no objects",
+    image=image,
+    mask_image=mask_pil,
+    num_inference_steps=28,
+    guidance_scale=30,
+).images[0]
+```
+
+**结果**：Flux Fill 是 prompt-guided 的，会在 mask 区域生成新内容（如玻璃盘子、咖啡色小球），不适合"移除"场景。
+
+| Flux Fill 结果 |
+|---------------|
+| ![fluxfill](../../data/pvtt-benchmark/cases/bracelet_to_necklace/empty_background_fluxfill_v3.png) |
+
+### 0.4 结论
+
+- **LaMa**：纯纹理填充，不需要 prompt，适合物体移除
+- **Flux Fill**：prompt-guided，会生成新内容，不适合移除场景
+
+**最终选择**：使用 LaMa (convex mask) 生成空背景首帧 `empty_background_lama_convex.png`
 
 ---
 
@@ -89,13 +115,15 @@ python scripts/lama_inpaint.py \
 
 ### Stage 1: 移除手链
 
+使用 LaMa 生成的空背景首帧作为 target-frame：
+
 ```bash
 CASE_DIR=~/pvtt/data/pvtt-benchmark/cases/bracelet_to_necklace
 
 python scripts/ti2v_rfsolver.py \
     --checkpoint-dir /data/xuhao/Wan2.2/Wan2.2-TI2V-5B \
     --source-video $CASE_DIR/source_video.mp4 \
-    --target-frame $CASE_DIR/source_frame1.png \
+    --target-frame $CASE_DIR/empty_background_lama_convex.png \
     --source-prompt "A black leather bracelet and silver chain bracelet on purple silk fabric, elegant jewelry display, soft lighting" \
     --target-prompt "Purple silk fabric, elegant jewelry display, soft lighting" \
     --output ~/pvtt/experiments/results/compositional/two_stage_step1_remove.mp4 \
@@ -136,8 +164,10 @@ python scripts/ti2v_rfsolver.py \
 
 | 指标 | 值 |
 |------|---|
-| Inverted std | |
-| 视觉质量 | |
+| Inverted std | 1.0599 |
+| 视觉质量 | 待评估 |
+
+**输出视频**: `experiments/results/compositional/two_stage_step1_remove.mp4`
 
 ### Stage 2: 添加项链
 
