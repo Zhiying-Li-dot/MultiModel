@@ -1,6 +1,6 @@
 # 两阶段视频编辑实验
 
-**日期**: 2026-01-20
+**日期**: 2026-01-20 ~ 2026-01-22
 **主题**: 两阶段编辑（先移除再添加）
 **测试用例**: bracelet_to_necklace (832x480, 25帧)
 
@@ -165,7 +165,7 @@ python scripts/ti2v_rfsolver.py \
 | 指标 | 值 |
 |------|---|
 | Inverted std | 1.0599 |
-| 视觉质量 | 待评估 |
+| 视觉质量 | 手链成功移除，背景纹理填充自然 |
 
 **输出视频**: `experiments/results/compositional/two_stage_step1_remove.mp4`
 
@@ -173,23 +173,41 @@ python scripts/ti2v_rfsolver.py \
 
 | 指标 | 值 |
 |------|---|
-| Inverted std | |
-| 视觉质量 | |
+| Inverted std | 1.0592 |
+| 视觉质量 | 主体展示清晰稳定，背景质量较差 |
 
----
+**输出视频**: `experiments/results/compositional/two_stage_step2_add_wan2.mp4`
 
-## 对比：单阶段 vs 两阶段
+**环境对比**:
+| 环境 | Attention | Inverted std | 备注 |
+|------|-----------|--------------|------|
+| wan (patched) | PyTorch native | 1.0591 | 使用 scaled_dot_product_attention |
+| wan2 | flash_attn 2.8.3 | 1.0592 | 原生 flash_attention |
 
-| 方法 | 结果 |
-|------|------|
-| 单阶段（手链→项链） | |
-| 两阶段（手链→空→项链） | |
+结果基本一致，说明 PyTorch native attention 和 flash_attn 效果相当。
 
 ---
 
 ## 结论
 
-（待填写）
+### 主要发现
+
+1. **两阶段方法可行**：通过 LaMa inpainting 生成空背景首帧，再分阶段进行视频编辑，可以实现物体替换。
+
+2. **主体质量**：目标物体（项链）展示清晰稳定，形态保持良好。
+
+3. **背景质量问题**：背景区域在多次编辑后质量下降，可能原因：
+   - LaMa 生成的空背景首帧纹理不够真实
+   - 两次 RF-Solver inversion 累积误差
+   - 视频编辑过程中背景细节损失
+
+4. **Attention 实现无差异**：flash_attn 和 PyTorch native attention 结果一致（std 差异 < 0.001）。
+
+### 改进方向
+
+1. **提升空背景质量**：尝试更好的 inpainting 方法或手动修复
+2. **单阶段对比**：与直接替换（手链→项链）的结果对比
+3. **背景保护**：探索在编辑过程中保护背景区域的方法
 
 ---
 
@@ -212,4 +230,5 @@ python scripts/ti2v_rfsolver.py \
 - Stage 1 配置: `data/pvtt-benchmark/cases/bracelet_to_necklace/config_stage1_remove.yaml`
 - Stage 2 配置: `data/pvtt-benchmark/cases/bracelet_to_necklace/config_stage2_add.yaml`
 - Stage 1 输出: `experiments/results/compositional/two_stage_step1_remove.mp4`
-- Stage 2 输出: `experiments/results/compositional/two_stage_step2_add.mp4`
+- Stage 2 输出 (wan patched): `experiments/results/compositional/two_stage_step2_add.mp4`
+- Stage 2 输出 (wan2 flash_attn): `experiments/results/compositional/two_stage_step2_add_wan2.mp4`
