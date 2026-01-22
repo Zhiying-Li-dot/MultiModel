@@ -169,6 +169,10 @@ python scripts/ti2v_rfsolver.py \
 
 **输出视频**: `experiments/results/compositional/two_stage_step1_remove.mp4`
 
+| Stage 1 首帧 (空背景) |
+|----------------------|
+| ![stage1](../../experiments/results/compositional/frames/stage1_frame1.png) |
+
 ### Stage 2: 添加项链
 
 | 指标 | 值 |
@@ -177,6 +181,16 @@ python scripts/ti2v_rfsolver.py \
 | 视觉质量 | 主体展示清晰稳定，背景质量较差 |
 
 **输出视频**: `experiments/results/compositional/two_stage_step2_add_wan2.mp4`
+
+| Stage 2 首帧 (项链) |
+|--------------------|
+| ![stage2](../../experiments/results/compositional/frames/stage2_frame1.png) |
+
+### 两阶段结果对比
+
+| 原始 (手链) | Stage 1 (空背景) | Stage 2 (项链) |
+|------------|------------------|----------------|
+| ![source](../../data/pvtt-benchmark/cases/bracelet_to_necklace/source_frame1.png) | ![stage1](../../experiments/results/compositional/frames/stage1_frame1.png) | ![stage2](../../experiments/results/compositional/frames/stage2_frame1.png) |
 
 **环境对比**:
 | 环境 | Attention | Inverted std | 备注 |
