@@ -13,6 +13,7 @@ AIGC (AI Generated Content) 是指利用人工智能技术自动生成内容的�
 | [05-视频生成](05-视频生成.md) | 视频生成算法 | Sora、时序建模 |
 | [06-3D生成](06-3D生成.md) | 3D内容生成 | NeRF、3DGS、Text-to-3D |
 | [07-核心技术详解](07-核心技术详解.md) | 技术深入 | 扩散数学、CFG、采样加速 |
+| [08-Flow Matching](08-Flow%20Matching.md) | 新范式 | CFM、OT、Rectified Flow |
 
 ## 学习路线
 
